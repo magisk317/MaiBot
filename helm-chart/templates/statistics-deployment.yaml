@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: nginx
-          image: {{ .Values.statistics_dashboard.image.repository }}:{{ .Values.statistics_dashboard.image.tag }}
+          image: {{ .Values.statistics_dashboard.image.repository }}:{{ .Values.statistics_dashboard.image.tag | default "latest" }}
           imagePullPolicy: {{ .Values.statistics_dashboard.image.pullPolicy }}
           livenessProbe:
             failureThreshold: 3

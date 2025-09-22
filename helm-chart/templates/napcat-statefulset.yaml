@@ -26,7 +26,7 @@ spec:
               value: "{{ .Values.napcat.permission.uid }}"
             - name: TZ
               value: Asia/Shanghai
-          image: {{ .Values.napcat.image.repository }}:{{ .Values.napcat.image.tag }}
+          image: {{ .Values.napcat.image.repository }}:{{ .Values.napcat.image.tag | default "v4.8.116" }}
           imagePullPolicy: {{ .Values.napcat.image.pullPolicy }}
           livenessProbe:
             failureThreshold: 3

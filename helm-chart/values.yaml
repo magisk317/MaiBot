@@ -10,7 +10,7 @@ adapter:
 
   image:
     repository: unclas/maimbot-adapter
-    tag: main-20250807151247
+    tag: # 默认 main-20250922131146
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -38,7 +38,7 @@ adapter:
   cm_generator:
     image:
       repository: reg.mikumikumi.xyz/maibot/adapter-cm-generator
-      tag: 0.10.0-alpha.0
+      tag: # 默认 0.10.3-beta
       pullPolicy: IfNotPresent
       pullSecrets: [ ]
 
@@ -48,7 +48,7 @@ core:
 
   image:
     repository: sengokucola/maibot
-    tag: main-a8ff08e
+    tag: # 默认 main-0e0179f
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -75,7 +75,7 @@ statistics_dashboard:
 
   image:
     repository: nginx
-    tag: latest
+    tag: # 默认 latest
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -115,7 +115,7 @@ napcat:
 
   image:
     repository: mlikiowa/napcat-docker
-    tag: v4.8.98
+    tag: # 默认 v4.8.116
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -161,7 +161,7 @@ sqlite_web:
 
   image:
     repository: coleifer/sqlite-web
-    tag: latest
+    tag: # 默认 latest
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 

@@ -15,7 +15,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: adapter-cm-generator
-          image: {{ .Values.adapter.cm_generator.image.repository }}:{{ .Values.adapter.cm_generator.image.tag }}
+          image: {{ .Values.adapter.cm_generator.image.repository }}:{{ .Values.adapter.cm_generator.image.tag | default "0.10.3-beta" }}
           workingDir: /app
           env:
             - name: PYTHONUNBUFFERED

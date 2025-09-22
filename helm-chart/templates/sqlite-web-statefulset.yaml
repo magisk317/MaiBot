@@ -22,7 +22,7 @@ spec:
           env:
             - name: SQLITE_DATABASE
               value: /data/MaiMBot/MaiBot.db
-          image: {{ .Values.sqlite_web.image.repository }}:{{ .Values.sqlite_web.image.tag }}
+          image: {{ .Values.sqlite_web.image.repository }}:{{ .Values.sqlite_web.image.tag | default "latest" }}
           imagePullPolicy: {{ .Values.sqlite_web.image.pullPolicy }}
           livenessProbe:
             failureThreshold: 3
