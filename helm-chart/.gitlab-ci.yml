@@ -19,6 +19,7 @@ initialize-maibot-git-repo:
     - echo "Current version is ${MAIBOT_VERSION}"
     - git reset --hard ${MAIBOT_VERSION}
     - echo ${MAIBOT_VERSION} > MAIBOT_VERSION
+    - git clone https://github.com/MaiM-with-u/maim_message maim_message
     - git clone https://github.com/MaiM-with-u/MaiMBot-LPMM.git MaiMBot-LPMM
     - ls -al
 
