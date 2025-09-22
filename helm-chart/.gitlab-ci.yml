@@ -33,6 +33,7 @@ build-core:
       - target-repo/
   script:
     - cd target-repo/
+    - export BUILD_CONTEXT=$(pwd)
     - ls -al
     - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:$(cat MAIBOT_VERSION)"
     - build
