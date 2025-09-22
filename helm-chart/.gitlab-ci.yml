@@ -13,10 +13,12 @@ initialize-maibot-git-repo:
     paths:
       - target-repo/
   script:
-    - rm -r target-repo || echo "`target-repo/` not found. Skipped."
-    - git reset --hard $(git describe --tags --abbrev=0)
-    - cp -r . /tmp/target-repo
-    - mv /tmp/target-repo ./target-repo
+    - git clone https://github.com/MaiM-with-u/MaiBot.git target-repo/
+    - cd target-repo/
+    - export MAIBOT_VERSION=$(git describe --tags --abbrev=0)
+    - echo "Current version is `${MAIBOT_VERSION}`"
+    - git reset --hard ${MAIBOT_VERSION}
+    - echo ${MAIBOT_VERSION} > MAIBOT_VERSION
 
 # 构建最后一个tag的麦麦本体的镜像
 build-core:
@@ -29,7 +31,8 @@ build-core:
       - target-repo/
   script:
     - cd target-repo/
-    - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:$(git describe --tags --abbrev=0)"
+    - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:$(cat MAIBOT_VERSION)"
+    - git clone https://github.com/MaiM-with-u/MaiMBot-LPMM.git MaiMBot-LPMM
     - build
     - rm -rf target-repo/* target-repo/.*
 
