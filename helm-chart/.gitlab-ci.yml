@@ -20,6 +20,7 @@ initialize-maibot-git-repo:
     - git reset --hard ${MAIBOT_VERSION}
     - echo ${MAIBOT_VERSION} > MAIBOT_VERSION
     - git clone https://github.com/MaiM-with-u/MaiMBot-LPMM.git MaiMBot-LPMM
+    - ls -al
 
 # 构建最后一个tag的麦麦本体的镜像
 build-core:
@@ -32,6 +33,7 @@ build-core:
       - target-repo/
   script:
     - cd target-repo/
+    - ls -al
     - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:$(cat MAIBOT_VERSION)"
     - build
     - rm -rf target-repo/* target-repo/.*
