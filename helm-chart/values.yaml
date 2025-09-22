@@ -48,7 +48,7 @@ core:
 
   image:
     repository: reg.mikumikumi.xyz/maibot/maibot
-    tag: # 默认 main-0e0179f
+    tag: # 默认 0.10.3-beta
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
