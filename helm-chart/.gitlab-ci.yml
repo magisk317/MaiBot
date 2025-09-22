@@ -1,16 +1,37 @@
 stages:
+  - initialize-maibot-git-repo
   - build
   - package
+
+# 查询并将麦麦仓库的工作区置为最后一个tag的版本
+initialize-maibot-git-repo:
+  stage: initialize-maibot-git-repo
+  image: reg.mikumikumi.xyz/base/git:latest
+  cache:
+    key: git-repo
+    policy: push
+    paths:
+      - target-repo/
+  script:
+    - rm -r target-repo
+    - git reset --hard $(git describe --tags --abbrev=0)
+    - cp -r . /tmp/target-repo
+    - mv /tmp/target-repo ./target-repo
 
 # 构建最后一个tag的麦麦本体的镜像
 build-core:
   stage: build
   image: reg.mikumikumi.xyz/base/kaniko-builder:latest
+  cache:
+    key: git-repo
+    policy: pull
+    paths:
+      - target-repo/
   script:
-    - export MAIBOT_VERSION=$(git describe --tags --abbrev=0)
-    - git reset --hard ${MAIBOT_VERSION}
-    - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:${MAIBOT_VERSION}"
+    - cd target-repo/
+    - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:$(git describe --tags --abbrev=0)"
     - build
+    - rm -rf target-repo/* target-repo/.*
 
 # 将Helm Chart版本作为tag，构建并推送镜像
 build-adapter-cm-generator:
