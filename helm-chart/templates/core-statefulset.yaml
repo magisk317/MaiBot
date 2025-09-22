@@ -29,7 +29,7 @@ spec:
               value: 99f08e0cab0190de853cb6af7d64d4de
             - name: PRIVACY_AGREE
               value: 9943b855e72199d0f5016ea39052f1b6
-          image: {{ .Values.core.image.repository }}:{{ .Values.core.image.tag | default "main-0e0179f" }}
+          image: {{ .Values.core.image.repository }}:{{ .Values.core.image.tag | default "0.10.3-beta" }}
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
           ports:
             - containerPort: 8000

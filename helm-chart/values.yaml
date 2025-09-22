@@ -47,7 +47,7 @@ adapter:
 core:
 
   image:
-    repository: sengokucola/maibot
+    repository: reg.mikumikumi.xyz/maibot/maibot
     tag: # 默认 main-0e0179f
     pullPolicy: IfNotPresent
     pullSecrets: [ ]

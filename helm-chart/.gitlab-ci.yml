@@ -2,6 +2,16 @@ stages:
   - build
   - package
 
+# 构建最后一个tag的麦麦本体的镜像
+build-core:
+  stage: build
+  image: reg.mikumikumi.xyz/base/kaniko-builder:latest
+  script:
+    - export MAIBOT_VERSION=$(git describe --tags --abbrev=0)
+    - git reset --hard ${MAIBOT_VERSION}
+    - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:${MAIBOT_VERSION}"
+    - build
+
 # 将Helm Chart版本作为tag，构建并推送镜像
 build-adapter-cm-generator:
   stage: build
