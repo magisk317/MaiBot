@@ -2,5 +2,5 @@ apiVersion: v2
 name: maibot
 description: "Maimai Bot, a cyber friend dedicated to group chats"
 type: application
-version: 0.10.0-alpha.0
-appVersion: 0.10.0-alpha
+version: 0.10.3-beta
+appVersion: 0.10.3-beta
