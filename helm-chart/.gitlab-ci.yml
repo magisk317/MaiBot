@@ -13,7 +13,7 @@ initialize-maibot-git-repo:
     paths:
       - target-repo/
   script:
-    - rm -r target-repo
+    - rm -r target-repo || echo "`target-repo/` not found. Skipped."
     - git reset --hard $(git describe --tags --abbrev=0)
     - cp -r . /tmp/target-repo
     - mv /tmp/target-repo ./target-repo
