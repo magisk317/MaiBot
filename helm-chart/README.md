@@ -4,6 +4,13 @@
 
 当前Helm Chart对应的麦麦版本可以在`Chart.yaml`中查看`appVersion`项。
 
+## 可用的Helm Chart版本列表
+
+| Helm Chart版本   | 对应的MaiBot版本  |
+|----------------|--------------|
+| 0.10.3-beta    | 0.10.3-beta  |
+| 0.10.0-alpha.0 | 0.10.0-alpha |
+
 ## Values项说明
 
 `values.yaml`分为几个大部分。
