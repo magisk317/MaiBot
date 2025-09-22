@@ -76,3 +76,5 @@ adapter的ConfigMap是每次部署/更新Helm安装实例时动态生成的。
 不是所有存储卷的底层存储都支持`ReadWriteMany`访问模式。
 
 如果你的存储底层无法支持`ReadWriteMany`访问模式，你可以通过`nodeSelector`配置将statistics_dashboard与core调度到同一节点来避免问题。
+
+*如果启用了`sqlite-web`，那么上述问题也同样适用于`sqlite-web`与`core`，需要注意。*
