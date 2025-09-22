@@ -30,4 +30,4 @@ fi
 
 # 启动麦麦
 echo "[VolumeLinker]Starting MaiBot..."
-python bot.py
+exec python bot.py
