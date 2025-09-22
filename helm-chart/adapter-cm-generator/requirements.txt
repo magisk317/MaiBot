@@ -1,2 +1,2 @@
-toml
-kubernetes
+toml~=0.10.2
+kubernetes~=33.1.0
