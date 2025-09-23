@@ -38,7 +38,6 @@ build-core:
     - ls -al
     - export BUILD_DESTINATION="reg.mikumikumi.xyz/maibot/maibot:tag-$(cat MAIBOT_VERSION)"
     - build
-    - rm -rf target-repo/* target-repo/.*
 
 # 将Helm Chart版本作为tag，构建并推送镜像
 build-adapter-cm-generator:
