@@ -21,7 +21,7 @@ spec:
           env:
             - name: TZ
               value: Asia/Shanghai
-          image: {{ .Values.adapter.image.repository }}:{{ .Values.adapter.image.tag | default "main-20250922131146" }}
+          image: {{ .Values.adapter.image.repository | default "unclas/maimbot-adapter" }}:{{ .Values.adapter.image.tag | default "main-20250922131146" }}
           imagePullPolicy: {{ .Values.adapter.image.pullPolicy }}
           ports:
             - containerPort: 8095

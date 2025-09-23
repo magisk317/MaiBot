@@ -9,7 +9,7 @@ PRIVACY_AGREE: false
 adapter:
 
   image:
-    repository: unclas/maimbot-adapter
+    repository: # 默认 unclas/maimbot-adapter
     tag: # 默认 main-20250922131146
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
@@ -37,7 +37,7 @@ adapter:
   # adapter的动态生成configmap的Job的配置
   cm_generator:
     image:
-      repository: reg.mikumikumi.xyz/maibot/adapter-cm-generator
+      repository: # 默认 reg.mikumikumi.xyz/maibot/adapter-cm-generator
       tag: # 默认 0.10.3-beta
       pullPolicy: IfNotPresent
       pullSecrets: [ ]
@@ -47,7 +47,7 @@ adapter:
 core:
 
   image:
-    repository: reg.mikumikumi.xyz/maibot/maibot
+    repository: # 默认 reg.mikumikumi.xyz/maibot/maibot
     tag: # 默认 tag-0.10.3-beta
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
@@ -74,7 +74,7 @@ statistics_dashboard:
   replicaCount: 1
 
   image:
-    repository: nginx
+    repository: # 默认 nginx
     tag: # 默认 latest
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
@@ -114,7 +114,7 @@ napcat:
   enabled: true
 
   image:
-    repository: mlikiowa/napcat-docker
+    repository: # 默认 mlikiowa/napcat-docker
     tag: # 默认 v4.8.116
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
@@ -160,7 +160,7 @@ sqlite_web:
   enabled: false
 
   image:
-    repository: coleifer/sqlite-web
+    repository: # 默认 coleifer/sqlite-web
     tag: # 默认 latest
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
