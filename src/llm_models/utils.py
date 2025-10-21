@@ -29,12 +29,20 @@ def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 *
         :return: 转换后的图片数据
         """
         try:
-            image = Image.open(image_data)
+            image = Image.open(io.BytesIO(image_data))
 
-            if image.format and (image.format.upper() in ["JPEG", "JPG", "PNG", "WEBP"]):
-                # 静态图像，转换为JPEG格式
+            # 仅在非动图时进行格式转换
+            if (
+                not getattr(image, "is_animated", False)
+                and image.format
+                and (image.format.upper() in ["JPEG", "JPG", "PNG", "WEBP"])
+            ):
                 reformated_image_data = io.BytesIO()
-                image.save(reformated_image_data, format="JPEG", quality=95, optimize=True)
+                img_to_save = image
+                # JPEG 不支持透明通道，确保转换为 RGB
+                if img_to_save.mode in ("RGBA", "LA", "P"):
+                    img_to_save = img_to_save.convert("RGB")
+                img_to_save.save(reformated_image_data, format="JPEG", quality=95, optimize=True)
                 image_data = reformated_image_data.getvalue()
 
             return image_data
@@ -50,20 +58,22 @@ def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 *
         :return: 缩放后的图片数据
         """
         try:
-            image = Image.open(image_data)
+            image = Image.open(io.BytesIO(image_data))
 
             # 原始尺寸
             original_size = (image.width, image.height)
 
-            # 计算新的尺寸
-            new_size = (int(original_size[0] * scale), int(original_size[1] * scale))
+            # 计算新的尺寸，防止为0
+            new_w = max(1, int(original_size[0] * scale))
+            new_h = max(1, int(original_size[1] * scale))
+            new_size = (new_w, new_h)
 
             output_buffer = io.BytesIO()
 
             if getattr(image, "is_animated", False):
                 # 动态图片，处理所有帧
                 frames = []
-                new_size = (new_size[0] // 2, new_size[1] // 2)  # 动图，缩放尺寸再打折
+                new_size = (max(1, new_size[0] // 2), max(1, new_size[1] // 2))  # 动图，缩放尺寸再打折
                 for frame_idx in range(getattr(image, "n_frames", 1)):
                     image.seek(frame_idx)
                     new_frame = image.copy()
@@ -83,6 +93,8 @@ def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 *
             else:
                 # 静态图片，直接缩放保存
                 resized_image = image.resize(new_size, Image.Resampling.LANCZOS)
+                if resized_image.mode in ("RGBA", "LA", "P"):
+                    resized_image = resized_image.convert("RGB")
                 resized_image.save(output_buffer, format="JPEG", quality=95, optimize=True)
 
             return output_buffer.getvalue(), original_size, new_size
