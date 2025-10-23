@@ -219,20 +219,27 @@ class ChatBot:
             # 确保所有任务已启动
             await self._ensure_started()
 
-            platform = message_data["message_info"].get("platform")
+            message_info = message_data.get("message_info")
+            if not isinstance(message_info, dict):
+                logger.error(
+                    "预处理消息失败: message_info 字段缺失或类型错误，payload=%s",
+                    message_data,
+                )
+                return
+
+            platform = message_info.get("platform")
 
             if platform == "amaidesu_default":
                 await self.do_s4u(message_data)
                 return
 
-            if message_data["message_info"].get("group_info") is not None:
-                message_data["message_info"]["group_info"]["group_id"] = str(
-                    message_data["message_info"]["group_info"]["group_id"]
-                )
-            if message_data["message_info"].get("user_info") is not None:
-                message_data["message_info"]["user_info"]["user_id"] = str(
-                    message_data["message_info"]["user_info"]["user_id"]
-                )
+            group_info_data = message_info.get("group_info")
+            if isinstance(group_info_data, dict) and "group_id" in group_info_data:
+                group_info_data["group_id"] = str(group_info_data["group_id"])
+
+            user_info_data = message_info.get("user_info")
+            if isinstance(user_info_data, dict) and "user_id" in user_info_data:
+                user_info_data["user_id"] = str(user_info_data["user_id"])
             # print(message_data)
             # logger.debug(str(message_data))
             message = MessageRecv(message_data)
