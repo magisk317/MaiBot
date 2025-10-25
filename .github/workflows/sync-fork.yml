@@ -1,0 +1,42 @@
+# .github/workflows/sync-fork.yml
+name: Sync Fork
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.repository_owner == 'magisk317'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync dev and main with upstream
+        env:
+          UPSTREAM_REPO: https://github.com/MaiM-with-u/MaiBot.git
+          TARGET_BRANCHES: "main dev"
+        run: |
+          set -euo pipefail
+          git remote add upstream "$UPSTREAM_REPO"
+          git fetch upstream --prune
+          for branch in $TARGET_BRANCHES; do
+            if git show-ref --verify --quiet "refs/remotes/upstream/$branch"; then
+              git checkout -B "$branch" "upstream/$branch"
+              git push origin "$branch" --force
+            else
+              echo "Upstream branch $branch not found, skipping."
+            fi
+          done
