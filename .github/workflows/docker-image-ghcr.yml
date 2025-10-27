@@ -38,48 +38,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine target branches
+      - name: Determine target branch
         id: determine-target
         env:
           TARGET_BRANCH_INPUT: ${{ github.event.inputs.target-branch }}
         run: |
           set -euo pipefail
-          raw="${TARGET_BRANCH_INPUT}"
-          if [[ -z "$raw" ]]; then
-            raw="main dev"
-          else
-            raw="${raw//,/ }"
+          target="${TARGET_BRANCH_INPUT}"
+          if [[ -z "$target" ]]; then
+            case "${GITHUB_REF}" in
+              refs/heads/main|refs/heads/dev|refs/heads/classical)
+                target="${GITHUB_REF#refs/heads/}"
+                ;;
+              refs/tags/*)
+                target="main"
+                ;;
+              *)
+                target="main"
+                ;;
+            esac
           fi
-          read -r -a arr <<<"$raw"
-          branches=()
-          for candidate in "${arr[@]}"; do
-            candidate="${candidate//[[:space:]]/}"
-            if [[ -n "$candidate" ]]; then
-              branches+=("$candidate")
-            fi
-          done
-          if ((${#branches[@]} == 0)); then
-            branches=("main" "dev")
-          fi
-          primary="${branches[0]}"
-          tags=""
-          for branch in "${branches[@]}"; do
-            tags+="type=raw,value=${branch}"$'\n'
-            tags+="type=sha,prefix=${branch}-,format=short"$'\n'
-          done
-          tags+="type=ref,event=tag"$'\n'
-          tags+="type=semver,pattern={{version}}"$'\n'
-          tags+="type=semver,pattern={{major}}.{{minor}}"$'\n'
-          tags+="type=semver,pattern={{major}}"$'\n'
-          {
-            echo "branch=${primary}"
-            echo "branches=${branches[*]}"
-            printf 'tags<<EOF\n%sEOF\n' "$tags"
-          } >> "$GITHUB_OUTPUT"
-          {
-            echo "TARGET_BRANCH=${primary}"
-            echo "TARGET_BRANCHES=${branches[*]}"
-          } >> "$GITHUB_ENV"
+          echo "branch=$target" >> "$GITHUB_OUTPUT"
+          echo "TARGET_BRANCH=$target" >> "$GITHUB_ENV"
 
       - name: Clone maim_message
         run: git clone https://github.com/MaiM-with-u/maim_message maim_message
@@ -104,7 +84,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
-          tags: ${{ steps.determine-target.outputs.tags }}
+          tags: |
+            type=raw,value=${{ steps.determine-target.outputs.branch }}
+            type=sha,prefix=${{ steps.determine-target.outputs.branch }}-,format=short
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       - name: Build and push AMD64
         id: build
@@ -131,48 +117,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Determine target branches
+      - name: Determine target branch
         id: determine-target
         env:
           TARGET_BRANCH_INPUT: ${{ github.event.inputs.target-branch }}
         run: |
           set -euo pipefail
-          raw="${TARGET_BRANCH_INPUT}"
-          if [[ -z "$raw" ]]; then
-            raw="main dev"
-          else
-            raw="${raw//,/ }"
+          target="${TARGET_BRANCH_INPUT}"
+          if [[ -z "$target" ]]; then
+            case "${GITHUB_REF}" in
+              refs/heads/main|refs/heads/dev|refs/heads/classical)
+                target="${GITHUB_REF#refs/heads/}"
+                ;;
+              refs/tags/*)
+                target="main"
+                ;;
+              *)
+                target="main"
+                ;;
+            esac
           fi
-          read -r -a arr <<<"$raw"
-          branches=()
-          for candidate in "${arr[@]}"; do
-            candidate="${candidate//[[:space:]]/}"
-            if [[ -n "$candidate" ]]; then
-              branches+=("$candidate")
-            fi
-          done
-          if ((${#branches[@]} == 0)); then
-            branches=("main" "dev")
-          fi
-          primary="${branches[0]}"
-          tags=""
-          for branch in "${branches[@]}"; do
-            tags+="type=raw,value=${branch}"$'\n'
-            tags+="type=sha,prefix=${branch}-,format=short"$'\n'
-          done
-          tags+="type=ref,event=tag"$'\n'
-          tags+="type=semver,pattern={{version}}"$'\n'
-          tags+="type=semver,pattern={{major}}.{{minor}}"$'\n'
-          tags+="type=semver,pattern={{major}}"$'\n'
-          {
-            echo "branch=${primary}"
-            echo "branches=${branches[*]}"
-            printf 'tags<<EOF\n%sEOF\n' "$tags"
-          } >> "$GITHUB_OUTPUT"
-          {
-            echo "TARGET_BRANCH=${primary}"
-            echo "TARGET_BRANCHES=${branches[*]}"
-          } >> "$GITHUB_ENV"
+          echo "branch=$target" >> "$GITHUB_OUTPUT"
+          echo "TARGET_BRANCH=$target" >> "$GITHUB_ENV"
 
       - name: Clone maim_message
         run: git clone https://github.com/MaiM-with-u/maim_message maim_message
@@ -197,7 +163,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
-          tags: ${{ steps.determine-target.outputs.tags }}
+          tags: |
+            type=raw,value=${{ steps.determine-target.outputs.branch }}
+            type=sha,prefix=${{ steps.determine-target.outputs.branch }}-,format=short
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       - name: Build and push ARM64
         id: build
@@ -223,48 +195,28 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Determine target branches
+      - name: Determine target branch
         id: determine-target
         env:
           TARGET_BRANCH_INPUT: ${{ github.event.inputs.target-branch }}
         run: |
           set -euo pipefail
-          raw="${TARGET_BRANCH_INPUT}"
-          if [[ -z "$raw" ]]; then
-            raw="main dev"
-          else
-            raw="${raw//,/ }"
+          target="${TARGET_BRANCH_INPUT}"
+          if [[ -z "$target" ]]; then
+            case "${GITHUB_REF}" in
+              refs/heads/main|refs/heads/dev|refs/heads/classical)
+                target="${GITHUB_REF#refs/heads/}"
+                ;;
+              refs/tags/*)
+                target="main"
+                ;;
+              *)
+                target="main"
+                ;;
+            esac
           fi
-          read -r -a arr <<<"$raw"
-          branches=()
-          for candidate in "${arr[@]}"; do
-            candidate="${candidate//[[:space:]]/}"
-            if [[ -n "$candidate" ]]; then
-              branches+=("$candidate")
-            fi
-          done
-          if ((${#branches[@]} == 0)); then
-            branches=("main" "dev")
-          fi
-          primary="${branches[0]}"
-          tags=""
-          for branch in "${branches[@]}"; do
-            tags+="type=raw,value=${branch}"$'\n'
-            tags+="type=sha,prefix=${branch}-,format=short"$'\n'
-          done
-          tags+="type=ref,event=tag"$'\n'
-          tags+="type=semver,pattern={{version}}"$'\n'
-          tags+="type=semver,pattern={{major}}.{{minor}}"$'\n'
-          tags+="type=semver,pattern={{major}}"$'\n'
-          {
-            echo "branch=${primary}"
-            echo "branches=${branches[*]}"
-            printf 'tags<<EOF\n%sEOF\n' "$tags"
-          } >> "$GITHUB_OUTPUT"
-          {
-            echo "TARGET_BRANCH=${primary}"
-            echo "TARGET_BRANCHES=${branches[*]}"
-          } >> "$GITHUB_ENV"
+          echo "branch=$target" >> "$GITHUB_OUTPUT"
+          echo "TARGET_BRANCH=$target" >> "$GITHUB_ENV"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -278,21 +230,24 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_NAME }}
-          tags: ${{ steps.determine-target.outputs.tags }}
+          tags: |
+            type=raw,value=${{ steps.determine-target.outputs.branch }}
+            type=sha,prefix=${{ steps.determine-target.outputs.branch }}-,format=short
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
 
       - name: Create and Push Manifest
         env:
           AMD64_DIGEST: ${{ needs.build-amd64.outputs.digest }}
           ARM64_DIGEST: ${{ needs.build-arm64.outputs.digest }}
-          TARGET_BRANCHES: ${{ steps.determine-target.outputs.branches }}
+          TARGET_BRANCH: ${{ steps.determine-target.outputs.branch }}
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           TAGS="${{ steps.meta.outputs.tags }}"
           if [[ -z "$TAGS" ]]; then
-            TAGS=""
-            for branch in ${TARGET_BRANCHES}; do
-              TAGS+="${branch} ${branch}-${SHORT_SHA} "
-            done
+            TAGS="${TARGET_BRANCH} ${TARGET_BRANCH}-${SHORT_SHA}"
           fi
           for tag in $TAGS; do
             echo "Creating manifest for $tag"
