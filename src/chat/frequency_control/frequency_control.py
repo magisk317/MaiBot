@@ -98,8 +98,8 @@ class FrequencyControl:
                 prompt,
             )
             
-            logger.info(f"频率调整 prompt: {prompt}")
-            logger.info(f"频率调整 response: {response}")
+            # logger.info(f"频率调整 prompt: {prompt}")
+            # logger.info(f"频率调整 response: {response}")
             
             if global_config.debug.show_prompt:
                 logger.info(f"频率调整 prompt: {prompt}")

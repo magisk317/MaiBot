@@ -1,4 +1,4 @@
-from typing import List, Tuple, Type, Any, Optional
+from typing import List, Tuple, Type, Optional
 from src.plugin_system import (
     BasePlugin,
     register_plugin,
@@ -7,8 +7,6 @@ from src.plugin_system import (
     ConfigField
 )
 from src.plugin_system.apis import send_api, frequency_api
-from .frequency_adjust_action import FrequencyAdjustAction
-
 
 class SetTalkFrequencyCommand(BaseCommand):
     """设置当前聊天的talk_frequency值"""
@@ -136,10 +134,6 @@ class BetterFrequencyPlugin(BasePlugin):
             "max_adjust_value": ConfigField(type=float, default=1.0, description="最大调整值"),
             "min_adjust_value": ConfigField(type=float, default=0.0, description="最小调整值"),
         },
-        # "features": {
-        #     "enable_frequency_adjust_action": ConfigField(type=bool, default=False, description="是否启用频率调节动作（FrequencyAdjustAction）"),
-        #     "enable_commands": ConfigField(type=bool, default=True, description="是否启用命令功能（/chat命令）"),
-        # }
     }
 
     def get_plugin_components(self) -> List[Tuple[ComponentInfo, Type]]:
@@ -152,8 +146,5 @@ class BetterFrequencyPlugin(BasePlugin):
                 (ShowFrequencyCommand.get_command_info(), ShowFrequencyCommand),
             ])
         
-        # 根据配置决定是否注册频率调节动作组件
-        # if self.config.get("features", {}).get("enable_frequency_adjust_action", True):
-            # components.append((FrequencyAdjustAction.get_action_info(), FrequencyAdjustAction))
         
         return components

@@ -930,6 +930,8 @@ class PrivateReplyer:
             content, (reasoning_content, model_name, tool_calls) = await self.express_model.generate_response_async(
                 prompt
             )
+            
+            content = content.strip()
 
             logger.info(f"使用 {model_name} 生成回复内容: {content}")
         return content, reasoning_content, model_name, tool_calls

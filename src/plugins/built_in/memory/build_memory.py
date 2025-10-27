@@ -128,9 +128,9 @@ class GetMemoryTool(BaseTool):
         content_parts = [f"问题：{question}"]
         
         if memory_answer:
-            content_parts.append(f"记忆仓库答案：{memory_answer}")
+            content_parts.append(f"对问题'{question}'，你回忆的信息是：{memory_answer}")
         else:
-            content_parts.append(f"记忆仓库：对问题'{question}'，没有什么印象")
+            content_parts.append(f"对问题'{question}'，没有什么印象")
         
         if chat_answer:
             content_parts.append(f"对问题'{question}'，基于聊天记录的回答：{chat_answer}")
