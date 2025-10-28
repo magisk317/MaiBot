@@ -331,7 +331,8 @@ class HeartFChatting:
 
         async with global_prompt_manager.async_message_scope(self.chat_stream.context.get_template_name()):
             asyncio.create_task(self.expression_learner.trigger_learning_for_chat())
-            asyncio.create_task(global_memory_chest.build_running_content(chat_id=self.stream_id))  
+            if getattr(global_config.memory, "enable_memory", True):
+                asyncio.create_task(global_memory_chest.build_running_content(chat_id=self.stream_id))
             asyncio.create_task(frequency_control_manager.get_or_create_frequency_control(self.stream_id).trigger_frequency_adjust())  
             
             # 添加curious检测任务 - 检测聊天记录中的矛盾、冲突或需要提问的内容

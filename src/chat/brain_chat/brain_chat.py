@@ -238,7 +238,8 @@ class BrainChatting:
 
         async with global_prompt_manager.async_message_scope(self.chat_stream.context.get_template_name()):
             asyncio.create_task(self.expression_learner.trigger_learning_for_chat())
-            asyncio.create_task(global_memory_chest.build_running_content(chat_id=self.stream_id))
+            if getattr(global_config.memory, "enable_memory", True):
+                asyncio.create_task(global_memory_chest.build_running_content(chat_id=self.stream_id))
 
             cycle_timers, thinking_id = self.start_cycle()
             logger.info(f"{self.log_prefix} 开始第{self._cycle_counter}次思考")

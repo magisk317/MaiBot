@@ -94,8 +94,11 @@ class MainSystem:
         logger.info("聊天管理器初始化成功")
         
         # 添加记忆管理任务
-        await async_task_manager.add_task(MemoryManagementTask())
-        logger.info("记忆管理任务已启动")
+        if getattr(global_config.memory, "enable_memory", True):
+            await async_task_manager.add_task(MemoryManagementTask())
+            logger.info("记忆管理任务已启动")
+        else:
+            logger.info("记忆功能已禁用，跳过记忆管理任务")
 
         # await asyncio.sleep(0.5) #防止logger输出飞了
 

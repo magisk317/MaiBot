@@ -94,14 +94,17 @@ class GetMemoryTool(BaseTool):
         if has_time_params and not self.chat_id:
             return {"content": f"问题：{question}，无法获取聊天记录：缺少chat_id"}
         
+        memory_enabled = getattr(global_config.memory, "enable_memory", True)
+
         # 创建并行任务
         tasks = []
-        
+
         # 原任务：从记忆仓库获取答案
-        memory_task = asyncio.create_task(
-            global_memory_chest.get_answer_by_question(question=question)
-        )
-        tasks.append(("memory", memory_task))
+        if memory_enabled:
+            memory_task = asyncio.create_task(
+                global_memory_chest.get_answer_by_question(question=question)
+            )
+            tasks.append(("memory", memory_task))
         
         # 新任务：从聊天记录获取答案（如果指定了时间参数）
         chat_task = None
@@ -121,13 +124,15 @@ class GetMemoryTool(BaseTool):
                 results[task_name] = None
         
         # 处理结果
-        memory_answer = results.get("memory")
+        memory_answer = results.get("memory") if memory_enabled else None
         chat_answer = results.get("chat")
         
         # 构建返回内容
         content_parts = [f"问题：{question}"]
-        
-        if memory_answer:
+
+        if not memory_enabled:
+            content_parts.append("记忆功能已关闭，未执行记忆检索")
+        elif memory_answer:
             content_parts.append(f"对问题'{question}'，你回忆的信息是：{memory_answer}")
         else:
             content_parts.append(f"对问题'{question}'，没有什么印象")
@@ -276,8 +281,16 @@ class GetMemoryAction(BaseAction):
     
     async def execute(self) -> Tuple[bool, str]:
         """执行关系动作"""
-        
         question = self.action_data.get("question", "")
+
+        if not getattr(global_config.memory, "enable_memory", True):
+            await self.store_action_info(
+                action_build_into_prompt=True,
+                action_prompt_display=f"你尝试回忆问题：{question}，但记忆功能已关闭",
+                action_done=True,
+            )
+            return False, f"问题：{question}，记忆功能已关闭"
+
         answer = await global_memory_chest.get_answer_by_question(self.chat_id, question)
         if not answer:
             await self.store_action_info(

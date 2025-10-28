@@ -52,6 +52,10 @@ class MemoryChest:
         Returns:
             str: 构建后的运行内容
         """
+        if not getattr(global_config.memory, "enable_memory", True):
+            logger.debug("记忆系统已禁用，跳过记忆构建任务")
+            return ""
+
         # 检查是否需要更新：基于消息数量和最新消息时间差的智能更新机制
         # 
         # 更新机制说明：
@@ -225,6 +229,10 @@ class MemoryChest:
         """
         根据问题获取答案
         """
+        if not getattr(global_config.memory, "enable_memory", True):
+            logger.debug("记忆系统已禁用，跳过记忆检索")
+            return ""
+
         logger.info(f"正在回忆问题答案: {question}")
         
         title = await self.select_title_by_question(question)
@@ -282,6 +290,9 @@ class MemoryChest:
         Returns:
             str: 格式化的记忆字符串，格式：问题：xxx,答案:xxxxx\n问题：xxx,答案:xxxxx\n...
         """
+        if not getattr(global_config.memory, "enable_memory", True):
+            return ""
+
         try:
             memories = []
 
