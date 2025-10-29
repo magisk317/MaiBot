@@ -173,7 +173,11 @@ class Person:
         Returns:
             Person: 新注册的Person实例
         """
-        if not platform or not user_id or not nickname:
+        display_name = (nickname or "").strip()
+        if not display_name:
+            display_name = f"用户{user_id}" if user_id else "未知用户"
+
+        if not platform or not user_id:
             logger.error("注册用户失败：platform、user_id 和 nickname 都是必需参数")
             return None
 
@@ -181,8 +185,21 @@ class Person:
         person_id = get_person_id(platform, user_id)
 
         if is_person_known(person_id=person_id):
-            logger.debug(f"用户 {nickname} 已存在")
-            return Person(person_id=person_id)
+            person = Person(person_id=person_id)
+            if not person or not person.is_known:
+                return person
+
+            old_nickname = person.nickname or ""
+            old_person_name = person.person_name
+            if display_name != old_nickname:
+                person.nickname = display_name
+                if not old_person_name or old_person_name == old_nickname:
+                    person.person_name = display_name
+                person.sync_to_database()
+                logger.debug(
+                    f"更新用户 {person_id} 的昵称信息: '{old_nickname}' -> '{display_name}'"
+                )
+            return person
 
         # 创建Person实例
         person = cls.__new__(cls)
@@ -191,11 +208,11 @@ class Person:
         person.person_id = person_id
         person.platform = platform
         person.user_id = user_id
-        person.nickname = nickname
+        person.nickname = display_name
 
         # 初始化默认值
         person.is_known = True  # 注册后立即标记为已认识
-        person.person_name = nickname  # 使用nickname作为初始person_name
+        person.person_name = display_name  # 使用nickname作为初始person_name
         person.name_reason = "用户注册时设置的昵称"
         person.know_times = 1
         person.know_since = time.time()
@@ -205,7 +222,7 @@ class Person:
         # 同步到数据库
         person.sync_to_database()
 
-        logger.info(f"成功注册新用户：{person_id}，平台：{platform}，昵称：{nickname}")
+        logger.info(f"成功注册新用户：{person_id}，平台：{platform}，昵称：{display_name}")
 
         return person
 

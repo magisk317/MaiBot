@@ -81,12 +81,14 @@ class HeartFCMessageReceiver:
             # if not processed_plain_text:
             # print(message)
 
-            logger.info(f"[{mes_name}]{userinfo.user_nickname}:{processed_plain_text}")  # type: ignore
+            display_name = userinfo.user_cardname or userinfo.user_nickname  # type: ignore
+            logger.info(f"[{mes_name}]{display_name}:{processed_plain_text}")  # type: ignore
 
+            preferred_name = display_name or userinfo.user_nickname  # type: ignore
             _ = Person.register_person(
                 platform=message.message_info.platform,  # type: ignore
                 user_id=message.message_info.user_info.user_id,  # type: ignore
-                nickname=userinfo.user_nickname,  # type: ignore
+                nickname=preferred_name,  # type: ignore
             )
 
         except Exception as e:

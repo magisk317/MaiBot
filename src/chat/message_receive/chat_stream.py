@@ -313,8 +313,10 @@ class ChatManager:
 
         if stream.group_info and stream.group_info.group_name:
             return stream.group_info.group_name
-        elif stream.user_info and stream.user_info.user_nickname:
-            return f"{stream.user_info.user_nickname}的私聊"
+        elif stream.user_info:
+            display_name = stream.user_info.user_cardname or stream.user_info.user_nickname
+            if display_name:
+                return f"{display_name}的私聊"
         else:
             return None
 

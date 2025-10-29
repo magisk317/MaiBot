@@ -413,7 +413,8 @@ def _build_readable_messages_internal(
         if message.is_action_record:
             # 对于动作记录，也处理图片ID
             content = process_pic_ids(message.display_message)
-            detailed_messages_raw.append((message.time, message.user_nickname, content, True))
+            action_name = message.user_cardname or message.user_nickname or "系统"
+            detailed_messages_raw.append((message.time, action_name, content, True))
             continue
 
         platform = message.user_platform
@@ -434,9 +435,9 @@ def _build_readable_messages_internal(
 
         person = Person(platform=platform, user_id=user_id)
         # 根据 replace_bot_name 参数决定是否替换机器人名称
-        person_name = (
-            person.person_name or f"{user_nickname}" or (f"昵称：{user_cardname}" if user_cardname else "某人")
-        )
+        preferred_display = user_cardname or user_nickname
+        fallback_display = user_nickname or user_cardname or "某人"
+        person_name = person.person_name or preferred_display or fallback_display
         if replace_bot_name and (
             (platform == global_config.bot.platform and user_id == global_config.bot.qq_account)
             or (platform == "telegram" and user_id == getattr(global_config.bot, "telegram_account", ""))

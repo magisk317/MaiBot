@@ -585,10 +585,11 @@ def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional["TargetP
                 from src.common.data_models.info_data_model import TargetPersonInfo  # 解决循环导入问题
 
                 # Initialize target_info with basic info
+                display_name = user_info.user_cardname or user_info.user_nickname  # type: ignore
                 target_info = TargetPersonInfo(
                     platform=platform,
                     user_id=user_id,
-                    user_nickname=user_info.user_nickname,  # type: ignore
+                    user_nickname=display_name,  # type: ignore
                     person_id=None,
                     person_name=None,
                 )
@@ -597,7 +598,7 @@ def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional["TargetP
                 try:
                     person = Person(platform=platform, user_id=user_id)
                     if not person.is_known:
-                        logger.warning(f"用户 {user_info.user_nickname} 尚未认识")
+                        logger.warning(f"用户 {display_name} 尚未认识")
                         # 如果用户尚未认识，则返回False和None
                         return False, None
                     if person.person_id:

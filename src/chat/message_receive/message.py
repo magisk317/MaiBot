@@ -283,7 +283,11 @@ class MessageProcessBase(Message):
                 if self.reply and hasattr(self.reply, "processed_plain_text"):
                     # print(f"self.reply.processed_plain_text: {self.reply.processed_plain_text}")
                     # print(f"reply: {self.reply}")
-                    return f"[回复<{self.reply.message_info.user_info.user_nickname}:{self.reply.message_info.user_info.user_id}> 的消息：{self.reply.processed_plain_text}]"  # type: ignore
+                    reply_user_info = self.reply.message_info.user_info  # type: ignore
+                    reply_name = reply_user_info.user_cardname or reply_user_info.user_nickname  # type: ignore
+                    return (
+                        f"[回复<{reply_name}:{reply_user_info.user_id}> 的消息：{self.reply.processed_plain_text}]"
+                    )  # type: ignore
                 return ""
             else:
                 return f"[{segment.type}:{str(segment.data)}]"

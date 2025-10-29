@@ -40,7 +40,8 @@ def _check_ban_words(text: str, userinfo: UserInfo, group_info: Optional[GroupIn
     for word in global_config.message_receive.ban_words:
         if word in text:
             chat_name = group_info.group_name if group_info else "私聊"
-            logger.info(f"[{chat_name}]{userinfo.user_nickname}:{text}")
+            display_name = userinfo.user_cardname or userinfo.user_nickname
+            logger.info(f"[{chat_name}]{display_name}:{text}")
             logger.info(f"[过滤词识别]消息中含有{word}，filtered")
             return True
     return False
@@ -64,7 +65,8 @@ def _check_ban_regex(text: str, userinfo: UserInfo, group_info: Optional[GroupIn
     for pattern in global_config.message_receive.ban_msgs_regex:
         if re.search(pattern, text):
             chat_name = group_info.group_name if group_info else "私聊"
-            logger.info(f"[{chat_name}]{userinfo.user_nickname}:{text}")
+            display_name = userinfo.user_cardname or userinfo.user_nickname
+            logger.info(f"[{chat_name}]{display_name}:{text}")
             logger.info(f"[正则表达式过滤]消息匹配到{pattern}，filtered")
             return True
     return False
@@ -205,6 +207,13 @@ class ChatBot:
             message = MessageRecv(message_data)
             group_info = message.message_info.group_info
             user_info = message.message_info.user_info
+
+            if (
+                group_info
+                and user_info
+                and (not user_info.user_cardname or not str(user_info.user_cardname).strip())
+            ):
+                user_info.user_cardname = user_info.user_nickname or ""
 
             continue_flag, modified_message = await events_manager.handle_mai_events(
                 EventType.ON_MESSAGE_PRE_PROCESS, message

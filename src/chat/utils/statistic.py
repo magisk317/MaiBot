@@ -480,7 +480,7 @@ class StatisticOutputTask(AsyncTask):
             elif message.user_id:  # Fallback to sender's info for chat_id if not a group_info based chat
                 # This uses the message SENDER's ID as per original logic's fallback
                 chat_id = f"u{message.user_id}"  # SENDER's user_id
-                chat_name = message.user_nickname  # SENDER's nickname
+                chat_name = message.user_cardname or message.user_nickname  # SENDER's display name
             else:
                 # If neither group_id nor sender_id is available for chat identification
                 logger.warning(
@@ -704,7 +704,7 @@ class StatisticOutputTask(AsyncTask):
                     if group_name and group_name.strip():
                         return group_name.strip()
                 elif stream.user_info and hasattr(stream.user_info, "user_nickname"):
-                    user_name = stream.user_info.user_nickname
+                    user_name = stream.user_info.user_cardname or stream.user_info.user_nickname
                     if user_name and user_name.strip():
                         return user_name.strip()
 
@@ -1293,7 +1293,7 @@ class StatisticOutputTask(AsyncTask):
                 if message.chat_info_group_id:
                     chat_name = message.chat_info_group_name or f"群{message.chat_info_group_id}"
                 elif message.user_id:
-                    chat_name = message.user_nickname or f"用户{message.user_id}"
+                    chat_name = (message.user_cardname or message.user_nickname) or f"用户{message.user_id}"
                 else:
                     continue
 
