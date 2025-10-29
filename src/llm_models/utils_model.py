@@ -21,10 +21,20 @@ from .exceptions import (
     EmptyResponseException,
     ModelAttemptFailed,
 )
+from .model_performance_cache import ModelPerformanceCache
 
 install(extra_lines=3)
 
 logger = get_logger("model_utils")
+
+PERF_DEFAULT_LATENCY = 6.0
+PENALTY_WEIGHT = 4.0
+USAGE_WEIGHT = 1.5
+TOKEN_WEIGHT = 0.0002
+FAILURE_WEIGHT = 6.0
+CONSEC_FAILURE_WEIGHT = 3.0
+RECENT_FAILURE_WINDOW = 120.0
+RECENT_FAILURE_WEIGHT = 5.0
 
 
 class RequestType(Enum):
@@ -46,6 +56,61 @@ class LLMRequest:
             model: (0, 0, 0) for model in self.model_for_task.model_list
         }
         """模型使用量记录，用于进行负载均衡，对应为(total_tokens, penalty, usage_penalty)，惩罚值是为了能在某个模型请求不给力或正在被使用的时候进行调整"""
+        self.performance_cache = ModelPerformanceCache.instance()
+        self.performance_cache_key = self._build_performance_key()
+
+    def _build_performance_key(self) -> str:
+        if self.request_type:
+            return self.request_type
+        model_key = ",".join(sorted(self.model_for_task.model_list))
+        return f"default:{model_key}"
+
+    def _compute_model_score(
+        self,
+        model_name: str,
+        usage_info: Tuple[int, int, int],
+        perf_stats: Dict[str, Dict[str, Any]],
+    ) -> float:
+        stats = perf_stats.get(model_name, {})
+        avg_latency = stats.get("avg_latency", 0.0) or 0.0
+        if avg_latency <= 0.0:
+            avg_latency = PERF_DEFAULT_LATENCY
+
+        last_latency = stats.get("last_latency", 0.0) or 0.0
+        if last_latency > 0.0:
+            avg_latency = (avg_latency + last_latency) / 2
+
+        failure_count = stats.get("fail_count", 0)
+        success_count = stats.get("success_count", 0)
+        consecutive_failures = stats.get("consecutive_failures", 0)
+        last_fail_ts = stats.get("last_fail_ts", 0.0) or 0.0
+        now = time.time()
+
+        recent_fail_penalty = 0.0
+        if last_fail_ts and now - last_fail_ts < RECENT_FAILURE_WINDOW:
+            recent_fail_penalty = RECENT_FAILURE_WEIGHT * (1 - (now - last_fail_ts) / RECENT_FAILURE_WINDOW)
+
+        total_tokens, penalty, usage_penalty = usage_info
+
+        failure_ratio = 0.0
+        if success_count + failure_count > 0:
+            failure_ratio = failure_count / (success_count + failure_count)
+
+        failure_penalty = failure_ratio * FAILURE_WEIGHT + consecutive_failures * CONSEC_FAILURE_WEIGHT
+
+        score = (
+            avg_latency
+            + penalty * PENALTY_WEIGHT
+            + usage_penalty * USAGE_WEIGHT
+            + min(total_tokens * TOKEN_WEIGHT, 5.0)
+            + failure_penalty
+            + recent_fail_penalty
+        )
+
+        if success_count == 0 and failure_count == 0:
+            score -= 0.5
+
+        return score
 
     async def generate_response_for_image(
         self,
@@ -206,15 +271,22 @@ class LLMRequest:
         if not available_models:
             raise RuntimeError("没有可用的模型可供选择。所有模型均已尝试失败。")
 
-        least_used_model_name = min(
-            available_models,
-            key=lambda k: available_models[k][0] + available_models[k][1] * 300 + available_models[k][2] * 1000,
-        )
-        model_info = model_config.get_model_info(least_used_model_name)
+        perf_stats = self.performance_cache.get_stats(self.performance_cache_key)
+
+        def model_score(item: Tuple[str, Tuple[int, int, int]]) -> float:
+            model_name, usage_info = item
+            return self._compute_model_score(model_name, usage_info, perf_stats)
+
+        best_model_name, best_usage = min(available_models.items(), key=model_score)
+        model_info = model_config.get_model_info(best_model_name)
         api_provider = model_config.get_provider(model_info.api_provider)
         force_new_client = self.request_type == "embedding"
         client = client_registry.get_client_class_instance(api_provider, force_new=force_new_client)
-        logger.debug(f"选择请求模型: {model_info.name}")
+        logger.debug(
+            "选择请求模型: %s | score=%.3f",
+            model_info.name,
+            self._compute_model_score(best_model_name, best_usage, perf_stats),
+        )
         total_tokens, penalty, usage_penalty = self.model_usage[model_info.name]
         self.model_usage[model_info.name] = (total_tokens, penalty, usage_penalty + 1)
         return model_info, api_provider, client
@@ -234,7 +306,7 @@ class LLMRequest:
         max_tokens: Optional[int],
         embedding_input: str | None,
         audio_base64: str | None,
-    ) -> APIResponse:
+    ) -> Tuple[APIResponse, float]:
         """
         在单个模型上执行请求，包含针对临时错误的重试逻辑。
         如果成功，返回APIResponse。如果失败（重试耗尽或硬错误），则抛出ModelAttemptFailed异常。
@@ -244,8 +316,9 @@ class LLMRequest:
 
         while retry_remain > 0:
             try:
+                attempt_start = time.perf_counter()
                 if request_type == RequestType.RESPONSE:
-                    return await client.get_response(
+                    api_response = await client.get_response(
                         model_info=model_info,
                         message_list=(compressed_messages or message_list),
                         tool_options=tool_options,
@@ -258,18 +331,22 @@ class LLMRequest:
                     )
                 elif request_type == RequestType.EMBEDDING:
                     assert embedding_input is not None, "嵌入输入不能为空"
-                    return await client.get_embedding(
+                    api_response = await client.get_embedding(
                         model_info=model_info,
                         embedding_input=embedding_input,
                         extra_params=model_info.extra_params,
                     )
                 elif request_type == RequestType.AUDIO:
                     assert audio_base64 is not None, "音频Base64不能为空"
-                    return await client.get_audio_transcriptions(
+                    api_response = await client.get_audio_transcriptions(
                         model_info=model_info,
                         audio_base64=audio_base64,
                         extra_params=model_info.extra_params,
                     )
+                else:
+                    raise RuntimeError(f"未知的请求类型: {request_type}")
+                elapsed = time.perf_counter() - attempt_start
+                return api_response, elapsed
             except (EmptyResponseException, NetworkConnectionError) as e:
                 retry_remain -= 1
                 if retry_remain <= 0:
@@ -340,7 +417,7 @@ class LLMRequest:
                 message_list = message_factory(client)
 
             try:
-                response = await self._attempt_request_on_model(
+                response, elapsed = await self._attempt_request_on_model(
                     model_info,
                     api_provider,
                     client,
@@ -355,6 +432,8 @@ class LLMRequest:
                     embedding_input=embedding_input,
                     audio_base64=audio_base64,
                 )
+                self.performance_cache.record_success(self.performance_cache_key, model_info.name, elapsed)
+
                 total_tokens, penalty, usage_penalty = self.model_usage[model_info.name]
                 if response_usage := response.usage:
                     total_tokens += response_usage.total_tokens
@@ -364,6 +443,13 @@ class LLMRequest:
             except ModelAttemptFailed as e:
                 last_exception = e.original_exception or e
                 logger.warning(f"模型 '{model_info.name}' 尝试失败，切换到下一个模型。原因: {e}")
+                fail_latency = getattr(api_provider, "timeout", 10)
+                self.performance_cache.record_failure(
+                    self.performance_cache_key,
+                    model_info.name,
+                    fail_latency,
+                    str(last_exception),
+                )
                 total_tokens, penalty, usage_penalty = self.model_usage[model_info.name]
                 self.model_usage[model_info.name] = (total_tokens, penalty + 1, usage_penalty - 1)
                 failed_models_this_request.add(model_info.name)
