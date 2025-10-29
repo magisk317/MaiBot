@@ -1,5 +1,5 @@
 [inner]
-version = "6.19.1"
+version = "6.19.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -120,6 +120,7 @@ auto_chat_value_rules = [
 ]
 
 [memory]
+enable_memory = true # 是否启用记忆系统
 max_memory_number = 100 # 记忆最大数量
 max_memory_size = 2048 # 记忆最大大小
 memory_build_frequency = 1 # 记忆构建频率

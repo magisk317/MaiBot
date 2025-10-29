@@ -315,6 +315,9 @@ class MessageReceiveConfig(ConfigBase):
 class MemoryConfig(ConfigBase):
     """记忆配置类"""
     
+    enable_memory: bool = True
+    """是否启用记忆系统"""
+    
     max_memory_number: int = 100
     """记忆最大数量"""
     

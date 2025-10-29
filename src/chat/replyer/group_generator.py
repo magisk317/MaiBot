@@ -278,8 +278,8 @@ class DefaultReplyer:
     async def build_memory_block(self) -> str:
         """构建记忆块
         """
-        # if not global_config.memory.enable_memory:
-            # return ""
+        if not getattr(global_config.memory, "enable_memory", True):
+            return ""
 
         if global_memory_chest.get_chat_memories_as_string(self.chat_stream.stream_id):
             return f"你有以下记忆：\n{global_memory_chest.get_chat_memories_as_string(self.chat_stream.stream_id)}"

@@ -34,6 +34,10 @@ class MemoryManagementTask(AsyncTask):
     
     async def start_task(self, abort_flag: asyncio.Event):
         """重写start_task方法，支持动态调整执行间隔"""
+        if not getattr(global_config.memory, "enable_memory", True):
+            logger.info("记忆管理任务未启动：记忆系统已禁用")
+            return
+
         if self.wait_before_start > 0:
             # 等待指定时间后开始任务
             await asyncio.sleep(self.wait_before_start)
@@ -86,6 +90,10 @@ class MemoryManagementTask(AsyncTask):
     
     async def run(self):
         """执行记忆管理任务"""
+        if not getattr(global_config.memory, "enable_memory", True):
+            logger.debug("记忆系统已禁用，跳过记忆管理任务执行")
+            return
+
         try:
 
             # 获取当前记忆数量
