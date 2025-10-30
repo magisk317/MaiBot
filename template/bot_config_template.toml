@@ -238,6 +238,7 @@ enable = true
 
 [experimental] #实验性功能
 none = false # 暂无
+enable_statistics = true # 是否启用统计模块，低内存环境可关闭以节省资源
 
 
 #此系统暂时移除，无效配置

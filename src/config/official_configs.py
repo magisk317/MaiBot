@@ -650,6 +650,9 @@ class ExperimentalConfig(ConfigBase):
     enable_friend_chat: bool = False
     """是否启用好友聊天"""
 
+    enable_statistics: bool = True
+    """是否启用统计模块"""
+
 
 @dataclass
 class MaimMessageConfig(ConfigBase):

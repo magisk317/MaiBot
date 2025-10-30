@@ -4,6 +4,7 @@ import json
 import time
 import random
 import math
+import os
 
 from json_repair import repair_json
 from typing import Union, Optional
@@ -20,6 +21,21 @@ logger = get_logger("person_info")
 relation_selection_model = LLMRequest(
     model_set=model_config.model_task_config.utils_small, request_type="relation_selection"
 )
+
+
+def _get_total_system_memory() -> Optional[int]:
+    """尝试获取系统总内存，失败时返回None"""
+    try:
+        import psutil  # type: ignore
+
+        return psutil.virtual_memory().total  # type: ignore[attr-defined]
+    except Exception:
+        try:
+            page_size = os.sysconf("SC_PAGE_SIZE")  # type: ignore[attr-defined]
+            phys_pages = os.sysconf("SC_PHYS_PAGES")  # type: ignore[attr-defined]
+            return int(page_size) * int(phys_pages)
+        except Exception:
+            return None
 
 
 def get_person_id(platform: str, user_id: Union[int, str]) -> str:
@@ -507,12 +523,16 @@ class PersonInfoManager:
         self.qv_name_llm = LLMRequest(model_set=model_config.model_task_config.utils, request_type="relation.qv_name")
         try:
             db.connect(reuse_if_open=True)
-            # 设置连接池参数
+            # 根据系统内存情况设置SQLite优化参数
             if hasattr(db, "execute_sql"):
-                # 设置SQLite优化参数
-                db.execute_sql("PRAGMA cache_size = -64000")  # 64MB缓存
-                db.execute_sql("PRAGMA temp_store = memory")  # 临时存储在内存中
-                db.execute_sql("PRAGMA mmap_size = 268435456")  # 256MB内存映射
+                total_memory = _get_total_system_memory()
+                # 仅在内存充足时应用大缓存设置，避免小内存机器被抢占
+                if total_memory is None or total_memory >= 4 * 1024 * 1024 * 1024:
+                    db.execute_sql("PRAGMA cache_size = -64000")  # 64MB缓存
+                    db.execute_sql("PRAGMA temp_store = memory")  # 临时存储在内存中
+                    db.execute_sql("PRAGMA mmap_size = 268435456")  # 256MB内存映射
+                else:
+                    logger.debug("检测到低内存环境，跳过SQLite大内存缓存设置")
             db.create_tables([PersonInfo], safe=True)
         except Exception as e:
             logger.error(f"数据库连接或 PersonInfo 表创建失败: {e}")

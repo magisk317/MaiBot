@@ -59,11 +59,12 @@ class MainSystem:
         """初始化其他组件"""
         init_start_time = time.time()
 
-        # 添加在线时间统计任务
-        await async_task_manager.add_task(OnlineTimeRecordTask())
-
-        # 添加统计信息输出任务
-        await async_task_manager.add_task(StatisticOutputTask())
+        # 添加统计任务（可配置关闭）
+        if getattr(global_config.experimental, "enable_statistics", True):
+            await async_task_manager.add_task(OnlineTimeRecordTask())
+            await async_task_manager.add_task(StatisticOutputTask())
+        else:
+            logger.info("统计功能已禁用，跳过统计任务")
 
         # 添加遥测心跳任务
         await async_task_manager.add_task(TelemetryHeartBeatTask())
