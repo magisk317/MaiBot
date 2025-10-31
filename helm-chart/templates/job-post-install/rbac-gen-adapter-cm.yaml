@@ -11,8 +11,11 @@ metadata:
   name: {{ .Release.Name }}-maibot-adapter-cm-gen-role
   namespace: {{ .Release.Namespace }}
 rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "update", "patch"]
   - apiGroups: ["apps"]
-    resources: ["configmaps", "statefulsets"]
+    resources: ["statefulsets"]
     verbs: ["get", "list", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
