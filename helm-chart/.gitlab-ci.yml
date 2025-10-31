@@ -56,7 +56,8 @@ build-adapter-cm-generator:
     - export BUILD_CONTEXT=helm-chart/adapter-cm-generator
     - export TMP_DST=reg.mikumikumi.xyz/maibot/adapter-cm-generator
     - export CHART_VERSION=$(cat helm-chart/Chart.yaml | grep '^version:' | cut -d' ' -f2)
-    - export BUILD_ARGS="--destination ${TMP_DST}:${CHART_VERSION} --destination ${TMP_DST}:latest"
+    - export BUILD_DESTINATION="${TMP_DST}:${CHART_VERSION}"
+    - export BUILD_ARGS="--destination ${TMP_DST}:latest"
     - build
 
 # 打包并推送helm chart
