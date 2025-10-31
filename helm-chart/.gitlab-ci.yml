@@ -49,9 +49,9 @@ build-core:
 build-adapter-cm-generator:
   stage: build
   image: reg.mikumikumi.xyz/base/kaniko-builder:latest
-  rules:
-    - changes:
-        - helm-chart/adapter-cm-generator/**
+#  rules:
+#    - changes:
+#        - helm-chart/adapter-cm-generator/**
   script:
     - export BUILD_CONTEXT=helm-chart/adapter-cm-generator
     - export TMP_DST=reg.mikumikumi.xyz/maibot/adapter-cm-generator
@@ -64,12 +64,12 @@ build-adapter-cm-generator:
 package-helm-chart:
   stage: package
   image: reg.mikumikumi.xyz/mirror/helm:latest
-  rules:
-    - changes:
-        - helm-chart/files/**
-        - helm-chart/templates/**
-        - helm-chart/Chart.yaml
-        - helm-chart/values.yaml
+#  rules:
+#    - changes:
+#        - helm-chart/files/**
+#        - helm-chart/templates/**
+#        - helm-chart/Chart.yaml
+#        - helm-chart/values.yaml
   script:
     - export CHART_VERSION=$(cat helm-chart/Chart.yaml | grep '^version:' | cut -d' ' -f2)
     - helm registry login reg.mikumikumi.xyz --username ${CI_REGISTRY_USER} --password ${CI_REGISTRY_PASSWORD}
