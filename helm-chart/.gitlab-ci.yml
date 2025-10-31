@@ -19,7 +19,7 @@ initialize-maibot-git-repo:
     paths:
       - target-repo/
   script:
-    - git clone https://github.com/MaiM-with-u/MaiBot.git target-repo/
+    - git clone https://github.com/Mai-with-u/MaiBot.git target-repo/
     - cd target-repo/
     - export MAIBOT_VERSION=$(git describe --tags --abbrev=0)
     - echo "Current version is ${MAIBOT_VERSION}"
