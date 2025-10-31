@@ -11,7 +11,7 @@ metadata:
   name: {{ .Release.Name }}-maibot-adapter-cm-gen-role
   namespace: {{ .Release.Namespace }}
 rules:
-  - apiGroups: [""]
+  - apiGroups: ["apps"]
     resources: ["configmaps", "statefulsets"]
     verbs: ["get", "list", "create", "update", "patch"]
 ---
