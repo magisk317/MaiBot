@@ -7,9 +7,11 @@ import os
 import toml
 import base64
 from kubernetes import client, config
+from datetime import datetime, timezone
 
 config.load_incluster_config()
-v1 = client.CoreV1Api()
+core_api = client.CoreV1Api()
+apps_api = client.AppsV1Api()
 
 # 读取部署的关键信息
 namespace = os.getenv("NAMESPACE")
@@ -33,11 +35,33 @@ cm = client.V1ConfigMap(
     data={'config.toml': toml.dumps(data)}
 )
 try:
-    v1.create_namespaced_config_map(namespace, cm)
+    core_api.create_namespaced_config_map(namespace, cm)
     print(f"ConfigMap `{cm_name}` created successfully")
 except client.exceptions.ApiException as e:
     if e.status == 409:  # 已存在，更新
-        v1.replace_namespaced_config_map(cm_name, namespace, cm)
+        core_api.replace_namespaced_config_map(cm_name, namespace, cm)
         print(f"ConfigMap `{cm_name}` replaced successfully")
     else:
         raise
+
+# 重启adapter的statefulset
+now = datetime.now(timezone.utc).isoformat()
+body = {
+    "spec": {
+        "template": {
+            "metadata": {
+                "annotations": {
+                    "kubectl.kubernetes.io/restartedAt": now
+                }
+            }
+        }
+    }
+}
+resp = apps_api.patch_namespaced_stateful_set(
+    name=f'{release_name}-maibot-adapter',
+    namespace=namespace,
+    body=body,
+)
+print(f"StatefulSet `{release_name}-maibot-adapter` restarted successfully")
+
+print('Job succeed.')
