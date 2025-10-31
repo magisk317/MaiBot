@@ -4,7 +4,7 @@
 
 当前Helm Chart对应的麦麦版本可以在`Chart.yaml`中查看`appVersion`项。
 
-部署文档：[Kubernetes 部署](https://docs.mai-mai.org/manual/deployment/mmc_deploy_kubernetes.html)
+详细部署文档：[Kubernetes 部署](https://docs.mai-mai.org/manual/deployment/mmc_deploy_kubernetes.html)
 
 ## 可用的Helm Chart版本列表
 
@@ -98,3 +98,30 @@ adapter的ConfigMap是每次部署/更新Helm安装实例时动态生成的。
 如果你的存储底层无法支持`ReadWriteMany`访问模式，你可以通过`nodeSelector`配置将statistics_dashboard与core调度到同一节点来避免问题。
 
 *如果启用了`sqlite-web`，那么上述问题也同样适用于`sqlite-web`与`core`，需要注意。*
+
+### 麦麦的默认插件
+
+麦麦的`core`容器提供了一些默认插件，以提升使用体验。但是插件目录存储在存储卷中，容器启动时挂载的存储卷会完全覆盖掉容器的默认插件目录，导致默认插件无法加载，也难以被用户感知。
+
+为了解决这一问题，此Helm Chart中为`core`容器引入了初始化容器。此初始化容器用于为用户自动安装默认插件到存储卷中。可以选择启用（默认启用）。
+
+*初始化容器使用与`core`主容器相同的镜像，且用后即销毁，因此不会消耗额外的带宽和存储成本。*
+
+#### 触发插件安装的条件
+
+- 首次部署时（此时没有任何插件处于安装状态）
+- 默认插件更新（即默认插件内容发生变化）
+
+#### 安装状态识别能力
+
+初始化容器会记录安装过的默认插件，不会重复安装。为了实现这一点，初始化容器会将安装状态写入`/MaiMBot/data/plugins/.installed-setup-plugins`文件中。
+
+基于上述状态识别能力，如果用户不需要某个插件，可以将其删除。由于此插件已自动安装过（记录在状态文件中），即使插件本体不存在也不会再次安装（除非插件更新）。
+
+#### 插件更新
+
+一旦在镜像中检测到新版本插件（即插件内容不同），初始化容器即会用新插件覆盖旧插件。
+
+考虑到旧插件中可能存在用户自定义配置，因此旧插件在被覆盖前会备份到`/MaiMBot/data/plugins-backup`目录中，并以时间归档。
+
+因此在升级麦麦后，请注意观察初始容器的日志并重新配置插件。
