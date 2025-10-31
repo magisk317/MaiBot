@@ -10,7 +10,7 @@ adapter:
 
   image:
     repository: # 默认 unclas/maimbot-adapter
-    tag: # 默认 main-20250922131146
+    tag: # 默认 main-20250924053857
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -48,7 +48,7 @@ core:
 
   image:
     repository: # 默认 reg.mikumikumi.xyz/maibot/maibot
-    tag: # 默认 tag-0.10.3-beta
+    tag: # 默认 tag-0.11.0-beta
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -115,7 +115,7 @@ napcat:
 
   image:
     repository: # 默认 mlikiowa/napcat-docker
-    tag: # 默认 v4.8.116
+    tag: # 默认 v4.9.8
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
