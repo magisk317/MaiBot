@@ -4,18 +4,31 @@
 
 当前Helm Chart对应的麦麦版本可以在`Chart.yaml`中查看`appVersion`项。
 
+部署文档：[Kubernetes 部署](https://docs.mai-mai.org/manual/deployment/mmc_deploy_kubernetes.html)
+
 ## 可用的Helm Chart版本列表
 
 | Helm Chart版本   | 对应的MaiBot版本  |
 |----------------|--------------|
+| 0.11.0         | 0.11.0       |
 | 0.10.3-beta    | 0.10.3-beta  |
 | 0.10.0-alpha.0 | 0.10.0-alpha |
+
+## TL; DR
+
+```shell
+helm install maimai \
+    oci://reg.mikumikumi.xyz/maibot/maibot \
+    --namespace bot \
+    --version <MAIBOT_VERSION> \
+    --values maibot.yaml
+```
 
 ## Values项说明
 
 `values.yaml`分为几个大部分。
 
-1. EULA & PRIVACY: 用户必须同意这里的协议才能成功部署麦麦。
+1. `EULA` & `PRIVACY`: 用户必须同意这里的协议才能成功部署麦麦。
 
 2. `adapter`: 麦麦的Adapter的部署配置。
 
