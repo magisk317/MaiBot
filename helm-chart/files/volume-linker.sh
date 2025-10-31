@@ -5,14 +5,14 @@
 # /MaiMBot/statistics是统计数据的实际挂载路径
 
 set -e
-echo "[VolumeLinker]Preparing volume..."
+echo "[VolumeLinker] Preparing volume..."
 
 # 初次启动，在存储卷中检查并创建关键文件和目录
 mkdir -p /MaiMBot/data/plugins
 mkdir -p /MaiMBot/data/logs
 if [ ! -d "/MaiMBot/statistics" ]
 then
-  echo "[VolumeLinker]    Statistics volume disabled."
+  echo "[VolumeLinker] Statistics volume disabled."
 else
   touch /MaiMBot/statistics/index.html
 fi
@@ -29,5 +29,5 @@ then
 fi
 
 # 启动麦麦
-echo "[VolumeLinker]Starting MaiBot..."
+echo "[VolumeLinker] Starting MaiBot..."
 exec python bot.py
