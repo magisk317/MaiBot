@@ -37,8 +37,8 @@ adapter:
   # adapter的动态生成configmap的Job的配置
   cm_generator:
     image:
-      repository: # 默认 reg.mikumikumi.xyz/maibot/adapter-cm-generator
-      tag: # 默认 0.10.3-beta
+      repository: # 默认 reg.mikumikumi.xyz/maibot/adapter-cm-generator 构建CI：https://gitlab.mikumikumi.xyz/maibot/maibot/-/pipelines
+      tag: # 默认 0.11.0-beta
       pullPolicy: IfNotPresent
       pullSecrets: [ ]
 
