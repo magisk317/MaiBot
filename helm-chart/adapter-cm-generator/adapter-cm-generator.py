@@ -44,7 +44,7 @@ except client.exceptions.ApiException as e:
     else:
         raise
 
-# 重启adapter的statefulset
+# 重启adapter和core的statefulset
 now = datetime.now(timezone.utc).isoformat()
 body = {
     "spec": {
@@ -57,8 +57,13 @@ body = {
         }
     }
 }
-resp = apps_api.patch_namespaced_stateful_set(
+apps_api.patch_namespaced_stateful_set(
     name=f'{release_name}-maibot-adapter',
+    namespace=namespace,
+    body=body,
+)
+apps_api.patch_namespaced_stateful_set(
+    name=f'{release_name}-maibot-core',
     namespace=namespace,
     body=body,
 )
