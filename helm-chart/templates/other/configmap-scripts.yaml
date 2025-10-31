@@ -7,3 +7,6 @@ data:
   # core
   volume-linker.sh: |
     {{ .Files.Get "files/volume-linker.sh" | nindent 4 }}
+  # core的初始化容器
+  setup-plugins.py: |
+    {{ .Files.Get "files/setup-plugins.py" | nindent 4 }}
