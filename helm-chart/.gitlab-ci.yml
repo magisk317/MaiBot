@@ -3,6 +3,12 @@ stages:
   - build
   - package
 
+# 仅在helm-chart分支运行
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "helm-chart"'
+    - when: never
+
 # 查询并将麦麦仓库的工作区置为最后一个tag的版本
 initialize-maibot-git-repo:
   stage: initialize-maibot-git-repo
