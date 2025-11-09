@@ -270,13 +270,28 @@ class LLMRequest:
                         audio_base64=audio_base64,
                         extra_params=model_info.extra_params,
                     )
-            except (EmptyResponseException, NetworkConnectionError) as e:
+            except EmptyResponseException as e:
+                # 空回复：通常为临时问题，单独记录并重试
                 retry_remain -= 1
                 if retry_remain <= 0:
-                    logger.error(f"模型 '{model_info.name}' 在用尽对临时错误的重试次数后仍然失败。")
+                    logger.error(f"模型 '{model_info.name}' 在多次出现空回复后仍然失败。")
                     raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
 
-                logger.warning(f"模型 '{model_info.name}' 遇到可重试错误: {str(e)}。剩余重试次数: {retry_remain}")
+                logger.warning(
+                    f"模型 '{model_info.name}' 返回空回复(可重试)。剩余重试次数: {retry_remain}"
+                )
+                await asyncio.sleep(api_provider.retry_interval)
+
+            except NetworkConnectionError as e:
+                # 网络错误：单独记录并重试
+                retry_remain -= 1
+                if retry_remain <= 0:
+                    logger.error(f"模型 '{model_info.name}' 在网络错误重试用尽后仍然失败。")
+                    raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
+
+                logger.warning(
+                    f"模型 '{model_info.name}' 遇到网络错误(可重试): {str(e)}。剩余重试次数: {retry_remain}"
+                )
                 await asyncio.sleep(api_provider.retry_interval)
 
             except RespNotOkException as e:
@@ -369,8 +384,8 @@ class LLMRequest:
                 failed_models_this_request.add(model_info.name)
 
                 if isinstance(last_exception, RespNotOkException) and last_exception.status_code == 400:
-                    logger.error("收到不可恢复的客户端错误 (400)，中止所有尝试。")
-                    raise last_exception from e
+                    logger.warning("收到客户端错误 (400)，跳过当前模型并继续尝试其他模型。")
+                    continue
 
         logger.error(f"所有 {max_attempts} 个模型均尝试失败。")
         if last_exception:

@@ -679,7 +679,7 @@ class PrivateReplyer:
                 continue
 
             timing_logs.append(f"{chinese_name}: {duration:.1f}s")
-            if duration > 8:
+            if duration > 12:
                 logger.warning(f"回复生成前信息获取耗时过长: {chinese_name} 耗时: {duration:.1f}s，请使用更快的模型")
         logger.info(f"回复准备: {'; '.join(timing_logs)}; {almost_zero_str} <0.1s")
 
@@ -922,7 +922,7 @@ class PrivateReplyer:
             # 直接使用已初始化的模型实例
             logger.info(f"\n{prompt}\n")
 
-            if global_config.debug.show_prompt:
+            if global_config.debug.show_replyer_prompt:
                 logger.info(f"\n{prompt}\n")
             else:
                 logger.debug(f"\n{prompt}\n")
@@ -934,6 +934,8 @@ class PrivateReplyer:
             content = content.strip()
 
             logger.info(f"使用 {model_name} 生成回复内容: {content}")
+            if global_config.debug.show_replyer_reasoning:
+                logger.info(f"使用 {model_name} 生成回复推理:\n{reasoning_content}")
         return content, reasoning_content, model_name, tool_calls
 
     async def get_prompt_info(self, message: str, sender: str, target: str):

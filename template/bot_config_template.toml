@@ -1,5 +1,5 @@
 [inner]
-version = "6.19.1"
+version = "6.19.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -221,6 +221,8 @@ library_log_levels = { aiohttp = "WARNING"} # 设置特定库的日志级别
 
 [debug]
 show_prompt = false # 是否显示prompt
+show_replyer_prompt = false # 是否显示回复器prompt
+show_replyer_reasoning = false # 是否显示回复器推理
 
 [maim_message]
 auth_token = [] # 认证令牌，用于API验证，为空则不启用验证
