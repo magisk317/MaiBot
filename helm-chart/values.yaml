@@ -38,7 +38,7 @@ adapter:
   cm_generator:
     image:
       repository: # 默认 reg.mikumikumi.xyz/maibot/adapter-cm-generator
-      tag: # 默认 0.11.0-beta
+      tag: # 默认 0.11.1-beta
       pullPolicy: IfNotPresent
       pullSecrets: [ ]
 
@@ -48,7 +48,7 @@ core:
 
   image:
     repository: # 默认 reg.mikumikumi.xyz/maibot/maibot
-    tag: # 默认 tag-0.11.0-beta
+    tag: # 默认 tag-0.11.1-beta
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -117,7 +117,7 @@ napcat:
 
   image:
     repository: # 默认 mlikiowa/napcat-docker
-    tag: # 默认 v4.9.8
+    tag: # 默认 v4.9.42
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
