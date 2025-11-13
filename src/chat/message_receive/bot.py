@@ -149,8 +149,51 @@ class ChatBot:
     async def handle_notice_message(self, message: MessageRecv):
         if message.message_info.message_id == "notice":
             message.is_notify = True
-            logger.info("notice消息")
-            print(message)
+            logger.debug("notice消息")
+            try:
+                seg = message.message_segment
+                mi = message.message_info
+                sub_type = None
+                scene = None
+                msg_id = None
+                recalled_id = None
+
+                if getattr(seg, "type", None) == "notify" and isinstance(getattr(seg, "data", None), dict):
+                    sub_type = seg.data.get("sub_type")
+                    scene = seg.data.get("scene")
+                    msg_id = seg.data.get("message_id")
+                    recalled = seg.data.get("recalled_user_info") or {}
+                    if isinstance(recalled, dict):
+                        recalled_id = recalled.get("user_id")
+
+                op = mi.user_info
+                gid = mi.group_info.group_id if mi.group_info else None
+
+                # 撤回事件打印；无法获取被撤回者则省略
+                if sub_type == "recall":
+                    op_name = getattr(op, "user_cardname", None) or getattr(op, "user_nickname", None) or str(getattr(op, "user_id", None))
+                    recalled_name = None
+                    try:
+                        if isinstance(recalled, dict):
+                            recalled_name = (
+                                recalled.get("user_cardname")
+                                or recalled.get("user_nickname")
+                                or str(recalled.get("user_id"))
+                            )
+                    except Exception:
+                        pass
+
+                    if recalled_name and str(recalled_id) != str(getattr(op, "user_id", None)):
+                        logger.info(f"{op_name} 撤回了 {recalled_name} 的消息")
+                    else:
+                        logger.info(f"{op_name} 撤回了消息")
+                else:
+                    logger.debug(
+                        f"[notice] sub_type={sub_type} scene={scene} op={getattr(op,'user_nickname',None)}({getattr(op,'user_id',None)}) "
+                        f"gid={gid} msg_id={msg_id} recalled={recalled_id}"
+                    )
+            except Exception:
+                logger.info("[notice] (简略) 收到一条通知事件")
 
             return True
 
@@ -215,8 +258,7 @@ class ChatBot:
                 message.message_segment = Seg(type="seglist", data=modified_message.message_segments)
 
             if await self.handle_notice_message(message):
-                # return
-                pass
+                return
 
             # 处理消息内容，生成纯文本
             await message.process()

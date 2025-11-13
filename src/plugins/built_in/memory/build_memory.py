@@ -1,13 +1,8 @@
-from typing import Tuple
 import asyncio
 from datetime import datetime
 
 from src.common.logger import get_logger
-from src.config.config import global_config
-from src.chat.utils.prompt_builder import Prompt
 from src.llm_models.payload_content.tool_option import ToolParamType
-from src.plugin_system import BaseAction, ActionActivationType
-from src.chat.utils.utils import cut_key_words
 from src.memory_system.Memory_chest import global_memory_chest
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.apis.message_api import get_messages_by_time_in_chat, build_readable_messages
@@ -125,12 +120,10 @@ class GetMemoryTool(BaseTool):
         chat_answer = results.get("chat")
         
         # 构建返回内容
-        content_parts = [f"问题：{question}"]
+        content_parts = []
         
         if memory_answer:
             content_parts.append(f"对问题'{question}'，你回忆的信息是：{memory_answer}")
-        else:
-            content_parts.append(f"对问题'{question}'，没有什么印象")
         
         if chat_answer:
             content_parts.append(f"对问题'{question}'，基于聊天记录的回答：{chat_answer}")
@@ -139,8 +132,13 @@ class GetMemoryTool(BaseTool):
                 content_parts.append(f"在 {time_point} 的时间点，你没有参与聊天")
             elif time_range:
                 content_parts.append(f"在 {time_range} 的时间范围内，你没有参与聊天")
-        
-        return {"content": "\n".join(content_parts)}
+            
+        if content_parts:
+            retrieval_content = f"问题：{question}" + "\n".join(content_parts)
+            return {"content": retrieval_content}
+        else:
+            return {"content": ""}
+
     
     async def _get_answer_from_chat_history(self, question: str, time_point: str = None, time_range: str = None) -> str:
         """从聊天记录中获取问题的答案"""
@@ -245,53 +243,3 @@ class GetMemoryTool(BaseTool):
         except Exception as e:
             logger.error(f"从聊天记录获取答案失败: {e}")
             return ""
-
-class GetMemoryAction(BaseAction):
-    """关系动作 - 获取记忆"""
-    
-    activation_type = ActionActivationType.LLM_JUDGE
-    parallel_action = True
-    
-    # 动作基本信息
-    action_name = "get_memory"
-    action_description = (
-        "在记忆中搜寻某个问题的答案"
-    )
-
-    # 动作参数定义
-    action_parameters = {
-        "question": "需要搜寻或回答的问题",
-    }
-
-    # 动作使用场景
-    action_require = [
-        "在记忆中搜寻某个问题的答案",
-        "有你不了解的概念",
-        "有人提问关于过去的事情",
-        "你需要根据记忆回答某个问题",
-    ]
-    
-    # 关联类型
-    associated_types = ["text"]
-    
-    async def execute(self) -> Tuple[bool, str]:
-        """执行关系动作"""
-        
-        question = self.action_data.get("question", "")
-        answer = await global_memory_chest.get_answer_by_question(self.chat_id, question)
-        if not answer:
-            await self.store_action_info(
-                action_build_into_prompt=True,
-                action_prompt_display=f"你回忆了有关问题：{question}的记忆，但是没有找到相关记忆",
-                action_done=True,
-            )
-            
-            return False, f"问题：{question}，没有找到相关记忆"
-        
-        await self.store_action_info(
-            action_build_into_prompt=True,
-            action_prompt_display=f"你回忆了有关问题：{question}的记忆，答案是：{answer}",
-            action_done=True,
-        )
-        
-        return True, f"成功获取记忆: {answer}"
