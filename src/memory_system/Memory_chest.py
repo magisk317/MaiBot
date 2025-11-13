@@ -41,6 +41,80 @@ class MemoryChest:
         self.running_content_list = {}  # {chat_id: {"content": running_content, "last_update_time": timestamp, "create_time": timestamp}}
         self.fetched_memory_list = []  # [(chat_id, (question, answer, timestamp)), ...]
 
+    def remove_one_memory_by_age_weight(self) -> bool:
+        """
+        删除一条记忆：按“越老/越新更易被删”的权重随机选择（老=较小id，新=较大id）。
+
+        返回：是否删除成功
+        """
+        try:
+            memories = list(MemoryChestModel.select())
+            if not memories:
+                return False
+
+            # 排除锁定项
+            candidates = [m for m in memories if not getattr(m, "locked", False)]
+            if not candidates:
+                return False
+
+            # 按 id 排序，使用 id 近似时间顺序（小 -> 老，大 -> 新）
+            candidates.sort(key=lambda m: m.id)
+            n = len(candidates)
+            if n == 1:
+                MemoryChestModel.delete().where(MemoryChestModel.id == candidates[0].id).execute()
+                logger.info(f"[记忆管理] 已删除一条记忆(权重抽样)：{candidates[0].title}")
+                return True
+
+            # 计算U型权重：中间最低，两端最高
+            # r ∈ [0,1] 为位置归一化，w = 0.1 + 0.9 * (abs(r-0.5)*2)**1.5
+            weights = []
+            for idx, _m in enumerate(candidates):
+                r = idx / (n - 1)
+                w = 0.1 + 0.9 * (abs(r - 0.5) * 2) ** 1.5
+                weights.append(w)
+
+            import random as _random
+            selected = _random.choices(candidates, weights=weights, k=1)[0]
+
+            MemoryChestModel.delete().where(MemoryChestModel.id == selected.id).execute()
+            logger.info(f"[记忆管理] 已删除一条记忆(权重抽样)：{selected.title}")
+            return True
+        except Exception as e:
+            logger.error(f"[记忆管理] 按年龄权重删除记忆时出错: {e}")
+            return False
+
+    def _compute_merge_similarity_threshold(self) -> float:
+        """
+        根据当前记忆数量占比动态计算合并相似度阈值。
+
+        规则：占比越高，阈值越低。
+        - < 60%: 0.80（更严格，避免早期误合并）
+        - < 80%: 0.70
+        - < 100%: 0.60
+        - < 120%: 0.50
+        - >= 120%: 0.45（最宽松，加速收敛）
+        """
+        try:
+            current_count = MemoryChestModel.select().count()
+            max_count = max(1, int(global_config.memory.max_memory_number))
+            percentage = current_count / max_count
+
+            if percentage < 0.6:
+                return 0.70
+            elif percentage < 0.8:
+                return 0.60
+            elif percentage < 1.0:
+                return 0.50
+            elif percentage < 1.5:
+                return 0.40
+            elif percentage < 2:
+                return 0.30
+            else:
+                return 0.25
+        except Exception:
+            # 发生异常时使用保守阈值
+            return 0.70
+
     async def build_running_content(self, chat_id: str = None) -> str:
         """
         构建记忆仓库的运行内容
@@ -446,19 +520,22 @@ class MemoryChest:
                 logger.warning("未提供chat_id，无法进行记忆匹配")
                 return [], []
             
-            # 使用相似度匹配查找最相似的记忆
+            # 动态计算相似度阈值（占比越高阈值越低）
+            dynamic_threshold = self._compute_merge_similarity_threshold()
+
+            # 使用相似度匹配查找最相似的记忆（基于动态阈值）
             similar_memory = find_most_similar_memory_by_chat_id(
                 target_title=memory_title,
                 target_chat_id=chat_id,
-                similarity_threshold=0.5  # 相似度阈值
+                similarity_threshold=dynamic_threshold
             )
             
             if similar_memory:
                 selected_title, selected_content, similarity = similar_memory
-                logger.info(f"为 '{memory_title}' 找到相似记忆: '{selected_title}' (相似度: {similarity:.3f})")
+                logger.info(f"为 '{memory_title}' 找到相似记忆: '{selected_title}' (相似度: {similarity:.3f} 阈值: {dynamic_threshold:.2f})")
                 return [selected_title], [selected_content]
             else:
-                logger.info(f"为 '{memory_title}' 未找到相似度 >= 0.7 的记忆")
+                logger.info(f"为 '{memory_title}' 未找到相似度 >= {dynamic_threshold:.2f} 的记忆")
                 return [], []
             
         except Exception as e:

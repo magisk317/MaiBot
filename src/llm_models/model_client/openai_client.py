@@ -237,15 +237,8 @@ def _build_stream_api_resp(
 
             resp.tool_calls.append(ToolCall(call_id, function_name, arguments))
 
-    # 检查 max_tokens 截断
-    if finish_reason == "length":
-        if resp.content and resp.content.strip():
-            logger.warning(
-                "⚠ OpenAI 响应因达到 max_tokens 限制被部分截断，\n"
-                "    可能会对回复内容造成影响，建议修改模型 max_tokens 配置！"
-            )
-        else:
-            logger.warning("⚠ OpenAI 响应因达到 max_tokens 限制被截断，\n    请修改模型 max_tokens 配置！")
+    # 检查 max_tokens 截断（流式的告警改由处理函数统一输出，这里不再输出）
+    # 保留 finish_reason 仅用于上层判断
     
     if not resp.content and not resp.tool_calls:
         raise EmptyResponseException()
@@ -270,6 +263,7 @@ async def _default_stream_response_handler(
     _tool_calls_buffer: list[tuple[str, str, io.StringIO]] = []  # 工具调用缓冲区，用于存储接收到的工具调用
     _usage_record = None  # 使用情况记录
     finish_reason: str | None = None  # 记录最后的 finish_reason
+    _model_name: str | None = None  # 记录模型名
 
     def _insure_buffer_closed():
         # 确保缓冲区被关闭
@@ -300,6 +294,9 @@ async def _default_stream_response_handler(
         if hasattr(event.choices[0], "finish_reason") and event.choices[0].finish_reason:
             finish_reason = event.choices[0].finish_reason
         
+        if hasattr(event, "model") and event.model and not _model_name:
+            _model_name = event.model  # 记录模型名
+
         if hasattr(delta, "reasoning_content") and delta.reasoning_content:  # type: ignore
             # 标记：有独立的推理内容块
             _has_rc_attr_flag = True
@@ -322,12 +319,34 @@ async def _default_stream_response_handler(
             )
 
     try:
-        return _build_stream_api_resp(
+        resp = _build_stream_api_resp(
             _fc_delta_buffer,
             _rc_delta_buffer,
             _tool_calls_buffer,
             finish_reason=finish_reason,
-        ), _usage_record
+        )
+        # 统一在这里输出 max_tokens 截断的警告，并从 resp 中读取
+        if finish_reason == "length":
+            # 把模型名塞到 resp.raw_data，后续严格“从 resp 提取”
+            try:
+                if _model_name:
+                    resp.raw_data = {"model": _model_name}
+            except Exception:
+                pass
+            model_dbg = None
+            try:
+                if isinstance(resp.raw_data, dict):
+                    model_dbg = resp.raw_data.get("model")
+            except Exception:
+                model_dbg = None
+
+            # 统一日志格式
+            logger.info(
+                "模型%s因为超过最大max_token限制，可能仅输出部分内容，可视情况调整"
+                % (model_dbg or "")
+            )
+
+        return resp, _usage_record
     except Exception:
         # 确保缓冲区被关闭
         _insure_buffer_closed()
@@ -351,9 +370,32 @@ def _default_normal_response_parser(
     """
     api_response = APIResponse()
 
-    if not hasattr(resp, "choices") or len(resp.choices) == 0:
-        raise EmptyResponseException("响应解析失败，缺失choices字段或choices列表为空")
-    message_part = resp.choices[0].message
+    # 兼容部分 OpenAI 兼容服务在空回复时返回 choices=None 的情况
+    choices = getattr(resp, "choices", None)
+    if not choices:
+        try:
+            model_dbg = getattr(resp, "model", None)
+            id_dbg = getattr(resp, "id", None)
+            usage_dbg = None
+            if hasattr(resp, "usage") and resp.usage:
+                usage_dbg = {
+                    "prompt": getattr(resp.usage, "prompt_tokens", None),
+                    "completion": getattr(resp.usage, "completion_tokens", None),
+                    "total": getattr(resp.usage, "total_tokens", None),
+                }
+            try:
+                raw_snippet = str(resp)[:300]
+            except Exception:
+                raw_snippet = "<unserializable>"
+            logger.debug(
+                f"empty choices: model={model_dbg} id={id_dbg} usage={usage_dbg} raw≈{raw_snippet}"
+            )
+        except Exception:
+            # 日志采集失败不应影响控制流
+            pass
+        # 统一抛出可重试的 EmptyResponseException，触发上层重试逻辑
+        raise EmptyResponseException("响应解析失败，choices 为空或缺失")
+    message_part = choices[0].message
 
     if hasattr(message_part, "reasoning_content") and message_part.reasoning_content:  # type: ignore
         # 有有效的推理字段
@@ -402,14 +444,13 @@ def _default_normal_response_parser(
         choice0 = resp.choices[0]
         reason = getattr(choice0, "finish_reason", None)
         if reason and reason == "length":
-            has_real_output = bool(api_response.content and api_response.content.strip())
-            if has_real_output:
-                logger.warning(
-                    "⚠ OpenAI 响应因达到 max_tokens 限制被部分截断，\n"
-                    "    可能会对回复内容造成影响，建议修改模型 max_tokens 配置！"
-                )
-            else:
-                logger.warning("⚠ OpenAI 响应因达到 max_tokens 限制被截断，\n    请修改模型 max_tokens 配置！")
+            print(resp)
+            _model_name = resp.model
+            # 统一日志格式
+            logger.info(
+                "模型%s因为超过最大max_token限制，可能仅输出部分内容，可视情况调整"
+                % (_model_name or "")
+            )
             return api_response, _usage_record
     except Exception as e:
         logger.debug(f"检查 MAX_TOKENS 截断时异常: {e}")
@@ -522,7 +563,7 @@ class OpenaiClient(BaseClient):
                     await asyncio.sleep(0.1)  # 等待0.5秒后再次检查任务&中断信号量状态
 
                 # logger.
-                logger.debug(f"OpenAI API响应(非流式): {req_task.result()}")
+                # logger.debug(f"OpenAI API响应(非流式): {req_task.result()}")
 
                 # logger.info(f"OpenAI请求时间: {model_info.model_identifier}  {time.time() - start_time} \n{messages}")
 

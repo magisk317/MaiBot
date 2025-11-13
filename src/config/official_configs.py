@@ -641,6 +641,12 @@ class DebugConfig(ConfigBase):
 
     show_prompt: bool = False
     """是否显示prompt"""
+    
+    show_replyer_prompt: bool = True
+    """是否显示回复器prompt"""
+    
+    show_replyer_reasoning: bool = True
+    """是否显示回复器推理"""
 
 
 @dataclass

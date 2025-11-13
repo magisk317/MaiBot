@@ -379,7 +379,7 @@ class EmojiManager:
 
         self._scan_task = None
 
-        self.vlm = LLMRequest(model_set=model_config.model_task_config.vlm, request_type="emoji")
+        self.vlm = LLMRequest(model_set=model_config.model_task_config.vlm, request_type="emoji.see")
         self.llm_emotion_judge = LLMRequest(
             model_set=model_config.model_task_config.utils, request_type="emoji"
         )  # 更高的温度，更少的token（后续可以根据情绪来调整温度）
@@ -940,16 +940,16 @@ class EmojiManager:
                     image_base64 = get_image_manager().transform_gif(image_base64)  # type: ignore
                     if not image_base64:
                         raise RuntimeError("GIF表情包转换失败")
-                    prompt = "这是一个动态图表情包，每一张图代表了动态图的某一帧，黑色背景代表透明，描述一下表情包表达的情感和内容，描述细节，从互联网梗,meme的角度去分析"
+                    prompt = "这是一个动态图表情包，每一张图代表了动态图的某一帧，黑色背景代表透明，简短描述一下表情包表达的情感和内容，描述细节，从互联网梗,meme的角度去分析"
                     description, _ = await self.vlm.generate_response_for_image(
-                        prompt, image_base64, "jpg", temperature=0.3, max_tokens=1000
+                        prompt, image_base64, "jpg", temperature=0.5
                     )
                 else:
                     prompt = (
-                        "这是一个表情包，请详细描述一下表情包所表达的情感和内容，描述细节，从互联网梗,meme的角度去分析"
+                        "这是一个表情包，请详细描述一下表情包所表达的情感和内容，简短描述细节，从互联网梗,meme的角度去分析"
                     )
                     description, _ = await self.vlm.generate_response_for_image(
-                        prompt, image_base64, image_format, temperature=0.3, max_tokens=1000
+                        prompt, image_base64, image_format, temperature=0.5
                     )
 
             # 审核表情包
@@ -970,13 +970,14 @@ class EmojiManager:
 
             # 第二步：LLM情感分析 - 基于详细描述生成情感标签列表
             emotion_prompt = f"""
-            请你识别这个表情包的含义和适用场景，给我简短的描述，每个描述不要超过15个字
-            这是一个基于这个表情包的描述：'{description}'
-            你可以关注其幽默和讽刺意味，动用贴吧，微博，小红书的知识，必须从互联网梗,meme的角度去分析
-            请直接输出描述，不要出现任何其他内容，如果有多个描述，可以用逗号分隔
+这是一个聊天场景中的表情包描述：'{description}'
+
+请你识别这个表情包的含义和适用场景，给我简短的描述，每个描述不要超过15个字
+你可以关注其幽默和讽刺意味，动用贴吧，微博，小红书的知识，必须从互联网梗,meme的角度去分析
+请直接输出描述，不要出现任何其他内容，如果有多个描述，可以用逗号分隔
             """
             emotions_text, _ = await self.llm_emotion_judge.generate_response_async(
-                emotion_prompt, temperature=0.7, max_tokens=600
+                emotion_prompt, temperature=0.7, max_tokens=256
             )
 
             # 处理情感列表
