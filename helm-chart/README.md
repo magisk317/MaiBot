@@ -10,6 +10,7 @@
 
 | Helm Chart版本   | 对应的MaiBot版本  | Commit SHA                               |
 |----------------|--------------|------------------------------------------|
+| 0.11.2-beta    | 0.11.2-beta  | d3c8cea00dbb97f545350f2c3d5bcaf252443df2 |
 | 0.11.1-beta    | 0.11.1-beta  | 94e079a340a43dff8a2bc178706932937fc10b11 |
 | 0.11.0-beta    | 0.11.0-beta  | 16059532d8ef87ac28e2be0838ff8b3a34a91d0f |
 | 0.10.3-beta    | 0.10.3-beta  | 7618937cd4fd0ab1a7bd8a31ab244a8b0742fced |

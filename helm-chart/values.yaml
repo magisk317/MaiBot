@@ -38,7 +38,7 @@ adapter:
   cm_generator:
     image:
       repository: # 默认 reg.mikumikumi.xyz/maibot/adapter-cm-generator
-      tag: # 默认 0.11.1-beta
+      tag: # 默认 0.11.2-beta
       pullPolicy: IfNotPresent
       pullSecrets: [ ]
 
@@ -47,8 +47,8 @@ adapter:
 core:
 
   image:
-    repository: # 默认 reg.mikumikumi.xyz/maibot/maibot
-    tag: # 默认 tag-0.11.1-beta
+    repository: # 默认 sengokucola/maibot
+    tag: # 默认 0.11.2-beta
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -117,7 +117,7 @@ napcat:
 
   image:
     repository: # 默认 mlikiowa/napcat-docker
-    tag: # 默认 v4.9.42
+    tag: # 默认 v4.9.70
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -331,23 +331,24 @@ config:
     price_out = 0
     
     
+    
     [model_task_config.utils] # 在麦麦的一些组件中使用的模型，例如表情包模块，取名模块，关系模块，麦麦的情绪变化等，是麦麦必须的模型
     model_list = ["siliconflow-deepseek-v3.2"] # 使用的模型列表，每个子项对应上面的模型名称(name)
     temperature = 0.2                        # 模型温度，新V3建议0.1-0.3
     max_tokens = 2048                         # 最大输出token数
     
     [model_task_config.utils_small] # 在麦麦的一些组件中使用的小模型，消耗量较大，建议使用速度较快的小模型
-    model_list = ["qwen3-30b"]
+    model_list = ["qwen3-30b","qwen3-next-80b"]
     temperature = 0.7
     max_tokens = 2048
     
     [model_task_config.tool_use] #工具调用模型，需要使用支持工具调用的模型
-    model_list = ["qwen3-30b"]
+    model_list = ["qwen3-30b","qwen3-next-80b"]
     temperature = 0.7
     max_tokens = 800
     
     [model_task_config.replyer] # 首要回复模型，还用于表达器和表达方式学习
-    model_list = ["siliconflow-deepseek-v3.2-think","siliconflow-deepseek-r1","siliconflow-deepseek-v3.2"]
+    model_list = ["siliconflow-deepseek-v3.2-think","siliconflow-glm-4.6-think","siliconflow-glm-4.6"]
     temperature = 0.3                        # 模型温度，新V3建议0.1-0.3
     max_tokens = 2048
     
@@ -387,7 +388,7 @@ config:
   # core的bot_config.toml
   core_bot_config: |
     [inner]
-    version = "6.19.2"
+    version = "6.21.4"
     
     #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
     #如果你想要修改配置文件，请递增version的值
@@ -446,10 +447,6 @@ config:
     state_probability = 0.3
     
     [expression]
-    # 表达方式模式
-    mode = "classic"
-    # 可选：classic经典模式，exp_model 表达模型模式，这个模式需要一定时间学习才会有比较好的效果
-    
     # 表达学习配置
     learning_list = [ # 表达学习配置列表，支持按聊天流配置
         ["", "enable", "enable", "1.0"],  # 全局配置：使用表达，启用学习，学习强度1.0
@@ -477,11 +474,9 @@ config:
     talk_value = 1 #聊天频率，越小越沉默，范围0-1
     mentioned_bot_reply = true # 是否启用提及必回复
     max_context_size = 30 # 上下文长度
-    auto_chat_value = 1 # 自动聊天，越小，麦麦主动聊天的概率越低
-    planner_smooth = 5 #规划器平滑，增大数值会减小planner负荷，略微降低反应速度，推荐2-8，0为关闭，必须大于等于0
+    planner_smooth = 2 #规划器平滑，增大数值会减小planner负荷，略微降低反应速度，推荐1-5，0为关闭，必须大于等于0
     
     enable_talk_value_rules = true # 是否启用动态发言频率规则
-    enable_auto_chat_value_rules = false # 是否启用动态自动聊天频率规则
     
     # 动态发言频率规则：按时段/按chat_id调整 talk_value（优先匹配具体chat，再匹配全局）
     # 推荐格式（对象数组）：{ target="platform:id:type" 或 "", time="HH:MM-HH:MM", value=0.5 }
@@ -495,23 +490,13 @@ config:
         { target = "qq:114514:private", time = "00:00-23:59", value = 0.3 },
     ]
     
-    # 动态自动聊天频率规则：按时段/按chat_id调整 auto_chat_value（优先匹配具体chat，再匹配全局）
-    # 推荐格式（对象数组）：{ target="platform:id:type" 或 "", time="HH:MM-HH:MM", value=0.5 }
-    # 说明:
-    # - target 为空字符串表示全局；type 为 group/private，例如："qq:1919810:group" 或 "qq:114514:private"；
-    # - 支持跨夜区间，例如 "23:00-02:00"；数值范围建议 0-1。
-    auto_chat_value_rules = [
-        { target = "", time = "00:00-08:59", value = 0.3 },
-        { target = "", time = "09:00-22:59", value = 1.0 },
-        { target = "qq:1919810:group", time = "20:00-23:59", value = 0.8 },
-        { target = "qq:114514:private", time = "00:00-23:59", value = 0.5 },
-    ]
+    include_planner_reasoning = false # 是否将planner推理加入replyer，默认关闭（不加入）
     
     [memory]
-    max_memory_number = 100 # 记忆最大数量
-    max_memory_size = 2048 # 记忆最大大小
-    memory_build_frequency = 1 # 记忆构建频率
+    max_agent_iterations = 5 # 记忆思考深度（最低为1（不深入思考））
     
+    [jargon]
+    all_global = true # 是否开启全局黑话模式，注意，此功能关闭后，已经记录的全局黑话不会改变，需要手动删除
     
     [tool]
     enable_tool = true # 是否启用工具
@@ -549,6 +534,8 @@ config:
     
     [lpmm_knowledge] # lpmm知识库配置
     enable = false # 是否启用lpmm知识库
+    lpmm_mode = "agent"
+    # 可选：classic经典模式，agent 模式，结合最新的记忆一同使用
     rag_synonym_search_top_k = 10 # 同义词搜索TopK
     rag_synonym_threshold = 0.8 # 同义词阈值（相似度高于此阈值的词语会被认为是同义词）
     info_extraction_workers = 3 # 实体提取同时执行线程数，非Pro模型不要设置超过5
@@ -594,6 +581,7 @@ config:
     max_length = 512 # 回复允许的最大长度
     max_sentence_num = 8 # 回复允许的最大句子数
     enable_kaomoji_protection = false # 是否启用颜文字保护
+    enable_overflow_return_all = false # 是否在句子数量超出回复允许的最大句子数时一次性返回全部内容
     
     [log]
     date_style = "m-d H:i:s" # 日期格式
@@ -611,6 +599,7 @@ config:
     show_prompt = false # 是否显示prompt
     show_replyer_prompt = false # 是否显示回复器prompt
     show_replyer_reasoning = false # 是否显示回复器推理
+    show_jargon_prompt = false # 是否显示jargon相关提示词
     
     [maim_message]
     auth_token = [] # 认证令牌，用于API验证，为空则不启用验证
@@ -627,7 +616,15 @@ config:
     enable = true
     
     [experimental] #实验性功能
-    none = false # 暂无
+    # 为指定聊天添加额外的prompt配置
+    # 格式: ["platform:id:type:prompt内容", ...]
+    # 示例:
+    # chat_prompts = [
+    #     "qq:114514:group:这是一个摄影群，你精通摄影知识",
+    #     "qq:19198:group:这是一个二次元交流群",
+    #     "qq:114514:private:这是你与好朋友的私聊"
+    # ]
+    chat_prompts = []
     
     
     #此系统暂时移除，无效配置

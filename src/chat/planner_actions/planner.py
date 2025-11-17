@@ -49,28 +49,52 @@ reply
 2.你可以自然的顺着正在进行的聊天内容进行回复或自然的提出一个问题
 3.不要回复你自己发送的消息
 4.不要单独对表情包进行回复
-{{
-    "action": "reply",
-    "target_message_id":"想要回复的消息id",
-    "reason":"回复的原因"
-}}
+{{"action":"reply", "target_message_id":"消息id(m+数字)", "reason":"原因"}}
 
 no_reply
 动作描述：
 保持沉默，不回复直到有新消息
 控制聊天频率，不要太过频繁的发言
-{{
-    "action": "no_reply",
-}}
+{{"action":"no_reply"}}
 
-no_reply_until_call
+{no_reply_until_call_block}
+
+{action_options_text}
+
+
+**你之前的action执行和思考记录**
+{actions_before_now_block}
+
+请选择**可选的**且符合使用条件的action，并说明触发action的消息id(消息id格式:m+数字)
+不要回复你自己发送的消息
+先输出你的简短的选择思考理由，再输出你选择的action，理由不要分点，精简。
+**动作选择要求**
+请你根据聊天内容,用户的最新消息和以下标准选择合适的动作:
+{plan_style}
+{moderation_prompt}
+
+请选择所有符合使用要求的action，动作用json格式输出，用```json包裹，如果输出多个json，每个json都要单独一行放在同一个```json代码块内，你可以重复使用同一个动作或不同动作:
+**示例**
+// 理由文本（简短）
+```json
+{{"action":"动作名", "target_message_id":"m123", "reason":"原因"}}
+{{"action":"动作名", "target_message_id":"m456", "reason":"原因"}}
+```""",
+        "planner_prompt",
+    )
+
+    Prompt(
+        """{time_block}
+{name_block}
+{chat_context_description}，以下是具体的聊天内容
+**聊天内容**
+{chat_content_block}
+
+**可选的action**
+no_reply
 动作描述：
-保持沉默，直到有人直接叫你的名字
-当前话题不感兴趣时使用，或有人不喜欢你的发言时使用
-当你频繁选择no_reply时使用，表示话题暂时与你无关
-{{
-    "action": "no_reply_until_call",
-}}
+没有合适的可以使用的动作，不使用action
+{{"action":"no_reply"}}
 
 {action_options_text}
 
@@ -78,31 +102,21 @@ no_reply_until_call
 {actions_before_now_block}
 
 请选择**可选的**且符合使用条件的action，并说明触发action的消息id(消息id格式:m+数字)
-不要回复你自己发送的消息
-先输出你的选择思考理由，再输出你选择的action，理由是一段平文本，不要分点，精简。
+先输出你的简短的选择思考理由，再输出你选择的action，理由不要分点，精简。
 **动作选择要求**
 请你根据聊天内容,用户的最新消息和以下标准选择合适的动作:
-{plan_style}
+1.思考**所有**的可用的action中的**每个动作**是否符合当下条件，如果动作使用条件符合聊天内容就使用
+2.如果相同的内容已经被执行，请不要重复执行
 {moderation_prompt}
 
-请选择所有符合使用要求的action，动作用json格式输出，如果输出多个json，每个json都要单独用```json包裹，你可以重复使用同一个动作或不同动作:
+请选择所有符合使用要求的action，动作用json格式输出，用```json包裹，如果输出多个json，每个json都要单独一行放在同一个```json代码块内，你可以重复使用同一个动作或不同动作:
 **示例**
-// 理由文本
+// 理由文本（简短）
 ```json
-{{
-    "action":"动作名",
-    "target_message_id":"触发动作的消息id",
-    //对应参数
-}}
-```
-```json
-{{
-    "action":"动作名",
-    "target_message_id":"触发动作的消息id",
-    //对应参数
-}}
+{{"action":"动作名", "target_message_id":"m123", "reason":"原因"}}
+{{"action":"动作名", "target_message_id":"m456", "reason":"原因"}}
 ```""",
-        "planner_prompt",
+        "planner_prompt_mentioned",
     )
 
     Prompt(
@@ -111,11 +125,7 @@ no_reply_until_call
 动作描述：{action_description}
 使用条件{parallel_text}：
 {action_require}
-{{
-    "action": "{action_name}",{action_parameters},
-    "target_message_id":"触发action的消息id",
-    "reason":"触发action的原因"
-}}
+{{"action":"{action_name}",{action_parameters}, "target_message_id":"消息id(m+数字)", "reason":"原因"}}
 """,
         "action_prompt",
     )
@@ -132,7 +142,6 @@ class ActionPlanner:
         )  # 用于动作规划
 
         self.last_obs_time_mark = 0.0
-
 
         self.plan_log: List[Tuple[str, float, Union[List[ActionPlannerInfo], str]]] = []
 
@@ -231,6 +240,7 @@ class ActionPlanner:
         self,
         available_actions: Dict[str, ActionInfo],
         loop_start_time: float = 0.0,
+        is_mentioned: bool = False,
     ) -> List[ActionPlannerInfo]:
         # sourcery skip: use-named-expression
         """
@@ -270,6 +280,11 @@ class ActionPlanner:
 
         logger.debug(f"{self.log_prefix}过滤后有{len(filtered_actions)}个可用动作")
 
+        # 如果是提及时且没有可用动作，直接返回空列表，不调用LLM以节省token
+        if is_mentioned and not filtered_actions:
+            logger.info(f"{self.log_prefix}提及时没有可用动作，跳过plan调用")
+            return []
+
         # 构建包含所有动作的提示词
         prompt, message_id_list = await self.build_planner_prompt(
             is_group_chat=is_group_chat,
@@ -278,6 +293,7 @@ class ActionPlanner:
             chat_content_block=chat_content_block,
             message_id_list=message_id_list,
             interest=global_config.personality.interest,
+            is_mentioned=is_mentioned,
         )
 
         # 调用LLM获取决策
@@ -289,7 +305,9 @@ class ActionPlanner:
             loop_start_time=loop_start_time,
         )
 
-        logger.info(f"{self.log_prefix}Planner:{reasoning}。选择了{len(actions)}个动作: {' '.join([a.action_type for a in actions])}")
+        logger.info(
+            f"{self.log_prefix}Planner:{reasoning}。选择了{len(actions)}个动作: {' '.join([a.action_type for a in actions])}"
+        )
 
         self.add_plan_log(reasoning, actions)
 
@@ -299,24 +317,79 @@ class ActionPlanner:
         self.plan_log.append((reasoning, time.time(), actions))
         if len(self.plan_log) > 20:
             self.plan_log.pop(0)
-    
+
     def add_plan_excute_log(self, result: str):
         self.plan_log.append(("", time.time(), result))
         if len(self.plan_log) > 20:
             self.plan_log.pop(0)
 
-    def get_plan_log_str(self) -> str:
-        plan_log_str = ""
-        for reasoning, time, content in self.plan_log:
+    def get_plan_log_str(self, max_action_records: int = 2, max_execution_records: int = 5) -> str:
+        """
+        获取计划日志字符串
+
+        Args:
+            max_action_records: 显示多少条最新的action记录，默认2
+            max_execution_records: 显示多少条最新执行结果记录，默认8
+
+        Returns:
+            格式化的日志字符串
+        """
+        action_records = []
+        execution_records = []
+
+        # 从后往前遍历，收集最新的记录
+        for reasoning, timestamp, content in reversed(self.plan_log):
             if isinstance(content, list) and all(isinstance(action, ActionPlannerInfo) for action in content):
-                time = datetime.fromtimestamp(time).strftime("%H:%M:%S")
-                plan_log_str += f"{time}:{reasoning}|你使用了{','.join([action.action_type for action in content])}\n"
+                # 这是action记录
+                if len(action_records) < max_action_records:
+                    action_records.append((reasoning, timestamp, content, "action"))
             else:
-                time = datetime.fromtimestamp(time).strftime("%H:%M:%S")
-                plan_log_str += f"{time}:{content}\n"
-                
+                # 这是执行结果记录
+                if len(execution_records) < max_execution_records:
+                    execution_records.append((reasoning, timestamp, content, "execution"))
+
+        # 合并所有记录并按时间戳排序
+        all_records = action_records + execution_records
+        all_records.sort(key=lambda x: x[1])  # 按时间戳排序
+
+        plan_log_str = ""
+
+        # 按时间顺序添加所有记录
+        for reasoning, timestamp, content, record_type in all_records:
+            time_str = datetime.fromtimestamp(timestamp).strftime("%H:%M:%S")
+            if record_type == "action":
+                # plan_log_str += f"{time_str}:{reasoning}|你使用了{','.join([action.action_type for action in content])}\n"
+                plan_log_str += f"{time_str}:{reasoning}\n"
+            else:
+                plan_log_str += f"{time_str}:你执行了action:{content}\n"
+
         return plan_log_str
 
+    def _has_consecutive_no_reply(self, min_count: int = 3) -> bool:
+        """
+        检查是否有连续min_count次以上的no_reply
+
+        Args:
+            min_count: 需要连续的最少次数，默认3
+
+        Returns:
+            如果有连续min_count次以上no_reply返回True，否则返回False
+        """
+        consecutive_count = 0
+
+        # 从后往前遍历plan_log，检查最新的连续记录
+        for _reasoning, _timestamp, content in reversed(self.plan_log):
+            if isinstance(content, list) and all(isinstance(action, ActionPlannerInfo) for action in content):
+                # 检查所有action是否都是no_reply
+                if all(action.action_type == "no_reply" for action in content):
+                    consecutive_count += 1
+                    if consecutive_count >= min_count:
+                        return True
+                else:
+                    # 如果遇到非no_reply的action，重置计数
+                    break
+
+        return False
 
     async def build_planner_prompt(
         self,
@@ -326,11 +399,11 @@ class ActionPlanner:
         message_id_list: List[Tuple[str, "DatabaseMessages"]],
         chat_content_block: str = "",
         interest: str = "",
+        is_mentioned: bool = False,
     ) -> tuple[str, List[Tuple[str, "DatabaseMessages"]]]:
         """构建 Planner LLM 的提示词 (获取模板并填充数据)"""
         try:
-
-            actions_before_now_block=self.get_plan_log_str()
+            actions_before_now_block = self.get_plan_log_str()
 
             # 构建聊天上下文描述
             chat_context_description = "你现在正在一个群聊中"
@@ -347,19 +420,47 @@ class ActionPlanner:
             )
             name_block = f"你的名字是{bot_name}{bot_nickname}，请注意哪些是你自己的发言。"
 
-            # 获取主规划器模板并填充
-            planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
-            prompt = planner_prompt_template.format(
-                time_block=time_block,
-                chat_context_description=chat_context_description,
-                chat_content_block=chat_content_block,
-                actions_before_now_block=actions_before_now_block,
-                action_options_text=action_options_block,
-                moderation_prompt=moderation_prompt_block,
-                name_block=name_block,
-                interest=interest,
-                plan_style=global_config.personality.plan_style,
-            )
+            # 根据是否是提及时选择不同的模板
+            if is_mentioned:
+                # 提及时使用简化版提示词，不需要reply、no_reply、no_reply_until_call
+                planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt_mentioned")
+                prompt = planner_prompt_template.format(
+                    time_block=time_block,
+                    chat_context_description=chat_context_description,
+                    chat_content_block=chat_content_block,
+                    actions_before_now_block=actions_before_now_block,
+                    action_options_text=action_options_block,
+                    moderation_prompt=moderation_prompt_block,
+                    name_block=name_block,
+                    interest=interest,
+                    plan_style=global_config.personality.plan_style,
+                )
+            else:
+                # 正常流程使用完整版提示词
+                # 检查是否有连续3次以上no_reply，如果有则添加no_reply_until_call选项
+                no_reply_until_call_block = ""
+                if self._has_consecutive_no_reply(min_count=3):
+                    no_reply_until_call_block = """no_reply_until_call
+动作描述：
+保持沉默，直到有人直接叫你的名字
+当前话题不感兴趣时使用，或有人不喜欢你的发言时使用
+当你频繁选择no_reply时使用，表示话题暂时与你无关
+{{"action":"no_reply_until_call"}}
+"""
+
+                planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
+                prompt = planner_prompt_template.format(
+                    time_block=time_block,
+                    chat_context_description=chat_context_description,
+                    chat_content_block=chat_content_block,
+                    actions_before_now_block=actions_before_now_block,
+                    action_options_text=action_options_block,
+                    no_reply_until_call_block=no_reply_until_call_block,
+                    moderation_prompt=moderation_prompt_block,
+                    name_block=name_block,
+                    interest=interest,
+                    plan_style=global_config.personality.plan_style,
+                )
 
             return prompt, message_id_list
         except Exception as e:
@@ -436,7 +537,7 @@ class ActionPlanner:
             for require_item in action_info.action_require:
                 require_text += f"- {require_item}\n"
             require_text = require_text.rstrip("\n")
-            
+
             if not action_info.parallel_action:
                 parallel_text = "(当选择这个动作时，请不要选择其他动作)"
             else:
@@ -463,7 +564,7 @@ class ActionPlanner:
         filtered_actions: Dict[str, ActionInfo],
         available_actions: Dict[str, ActionInfo],
         loop_start_time: float,
-    ) -> Tuple[str,List[ActionPlannerInfo]]:
+    ) -> Tuple[str, List[ActionPlannerInfo]]:
         """执行主规划器"""
         llm_content = None
         actions: List[ActionPlannerInfo] = []
@@ -475,7 +576,7 @@ class ActionPlanner:
             # logger.info(f"{self.log_prefix}规划器原始提示词: {prompt}")
             # logger.info(f"{self.log_prefix}规划器原始响应: {llm_content}")
 
-            if global_config.debug.show_prompt:
+            if global_config.debug.show_planner_prompt:
                 logger.info(f"{self.log_prefix}规划器原始提示词: {prompt}")
                 logger.info(f"{self.log_prefix}规划器原始响应: {llm_content}")
                 if reasoning_content:
@@ -488,7 +589,7 @@ class ActionPlanner:
 
         except Exception as req_e:
             logger.error(f"{self.log_prefix}LLM 请求执行失败: {req_e}")
-            return f"LLM 请求失败，模型出现问题: {req_e}",[
+            return f"LLM 请求失败，模型出现问题: {req_e}", [
                 ActionPlannerInfo(
                     action_type="no_reply",
                     reasoning=f"LLM 请求失败，模型出现问题: {req_e}",
@@ -507,7 +608,11 @@ class ActionPlanner:
                     logger.debug(f"{self.log_prefix}从响应中提取到{len(json_objects)}个JSON对象")
                     filtered_actions_list = list(filtered_actions.items())
                     for json_obj in json_objects:
-                        actions.extend(self._parse_single_action(json_obj, message_id_list, filtered_actions_list, extracted_reasoning))
+                        actions.extend(
+                            self._parse_single_action(
+                                json_obj, message_id_list, filtered_actions_list, extracted_reasoning
+                            )
+                        )
                 else:
                     # 尝试解析为直接的JSON
                     logger.warning(f"{self.log_prefix}LLM没有返回可用动作: {llm_content}")
@@ -530,7 +635,7 @@ class ActionPlanner:
 
         logger.debug(f"{self.log_prefix}规划器选择了{len(actions)}个动作: {' '.join([a.action_type for a in actions])}")
 
-        return extracted_reasoning,actions
+        return extracted_reasoning, actions
 
     def _create_no_reply(self, reasoning: str, available_actions: Dict[str, ActionInfo]) -> List[ActionPlannerInfo]:
         """创建no_reply"""
@@ -552,10 +657,11 @@ class ActionPlanner:
 
         # 使用正则表达式查找```json包裹的JSON内容
         json_pattern = r"```json\s*(.*?)\s*```"
-        matches = re.findall(json_pattern, content, re.DOTALL)
+        markdown_matches = re.findall(json_pattern, content, re.DOTALL)
 
         # 提取JSON之前的内容作为推理文本
-        if matches:
+        first_json_pos = len(content)
+        if markdown_matches:
             # 找到第一个```json的位置
             first_json_pos = content.find("```json")
             if first_json_pos > 0:
@@ -564,19 +670,38 @@ class ActionPlanner:
                 reasoning_content = re.sub(r"^//\s*", "", reasoning_content, flags=re.MULTILINE)
                 reasoning_content = reasoning_content.strip()
 
-        for match in matches:
+        # 处理```json包裹的JSON
+        for match in markdown_matches:
             try:
                 # 清理可能的注释和格式问题
                 json_str = re.sub(r"//.*?\n", "\n", match)  # 移除单行注释
                 json_str = re.sub(r"/\*.*?\*/", "", json_str, flags=re.DOTALL)  # 移除多行注释
                 if json_str := json_str.strip():
-                    json_obj = json.loads(repair_json(json_str))
-                    if isinstance(json_obj, dict):
-                        json_objects.append(json_obj)
-                    elif isinstance(json_obj, list):
-                        for item in json_obj:
-                            if isinstance(item, dict):
-                                json_objects.append(item)
+                    # 尝试按行分割，每行可能是一个JSON对象
+                    lines = [line.strip() for line in json_str.split("\n") if line.strip()]
+                    for line in lines:
+                        try:
+                            # 尝试解析每一行作为独立的JSON对象
+                            json_obj = json.loads(repair_json(line))
+                            if isinstance(json_obj, dict):
+                                json_objects.append(json_obj)
+                            elif isinstance(json_obj, list):
+                                for item in json_obj:
+                                    if isinstance(item, dict):
+                                        json_objects.append(item)
+                        except json.JSONDecodeError:
+                            # 如果单行解析失败，尝试将整个块作为一个JSON对象或数组
+                            pass
+
+                    # 如果按行解析没有成功，尝试将整个块作为一个JSON对象或数组
+                    if not json_objects:
+                        json_obj = json.loads(repair_json(json_str))
+                        if isinstance(json_obj, dict):
+                            json_objects.append(json_obj)
+                        elif isinstance(json_obj, list):
+                            for item in json_obj:
+                                if isinstance(item, dict):
+                                    json_objects.append(item)
             except Exception as e:
                 logger.warning(f"解析JSON块失败: {e}, 块内容: {match[:100]}...")
                 continue

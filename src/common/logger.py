@@ -351,6 +351,7 @@ MODULE_COLORS = {
     # 核心模块
     "main": "\033[1;97m",  # 亮白色+粗体 (主程序)
     "memory": "\033[38;5;34m",  # 天蓝色
+    "memory_retrieval": "\033[38;5;34m",  # 天蓝色
     "config": "\033[93m",  # 亮黄色
     "common": "\033[95m",  # 亮紫色
     "tools": "\033[96m",  # 亮青色
@@ -372,6 +373,8 @@ MODULE_COLORS = {
     "chat_stream": "\033[38;5;51m",  # 亮青色
     "message_storage": "\033[38;5;33m",  # 深蓝色
     "expressor": "\033[38;5;166m",  # 橙色
+    # jargon相关
+    "jargon": "\033[38;5;220m",  # 金黄色，突出显示
     # 插件系统
     "plugins": "\033[31m",  # 红色
     "plugin_api": "\033[33m",  # 黄色
@@ -440,6 +443,7 @@ MODULE_ALIASES = {
     "database_model": "数据库",
     "mood": "情绪",
     "memory": "记忆",
+    "memory_retrieval": "回忆",
     "tool_executor": "工具",
     "hfc": "聊天节奏",
     "plugin_manager": "插件",
@@ -450,6 +454,7 @@ MODULE_ALIASES = {
     "planner": "规划器",
     "config": "配置",
     "main": "主程序",
+    "chat_history_summarizer": "聊天概括器",
 }
 
 RESET_COLOR = "\033[0m"

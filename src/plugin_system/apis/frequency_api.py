@@ -6,7 +6,9 @@ logger = get_logger("frequency_api")
 
 
 def get_current_talk_value(chat_id: str) -> float:
-    return frequency_control_manager.get_or_create_frequency_control(chat_id).get_talk_frequency_adjust() * global_config.chat.get_talk_value(chat_id)
+    return frequency_control_manager.get_or_create_frequency_control(
+        chat_id
+    ).get_talk_frequency_adjust() * global_config.chat.get_talk_value(chat_id)
 
 
 def set_talk_frequency_adjust(chat_id: str, talk_frequency_adjust: float) -> None:

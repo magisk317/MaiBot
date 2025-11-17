@@ -1,8 +1,6 @@
 import json
 import time
-import random
 import hashlib
-import re
 
 from typing import List, Dict, Optional, Any, Tuple
 from json_repair import repair_json
@@ -12,27 +10,25 @@ from src.config.config import global_config, model_config
 from src.common.logger import get_logger
 from src.common.database.database_model import Expression
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
-from src.express.style_learner import style_learner_manager
-from src.express.express_utils import filter_message_content, weighted_sample
+from src.express.express_utils import weighted_sample
 
 logger = get_logger("expression_selector")
 
 
 def init_prompt():
-    expression_evaluation_prompt = """
-以下是正在进行的聊天内容：
-{chat_observe_info}
+    expression_evaluation_prompt = """{chat_observe_info}
 
 你的名字是{bot_name}{target_message}
+{reply_reason_block}
 
 以下是可选的表达情境：
 {all_situations}
 
 请你分析聊天内容的语境、情绪、话题类型，从上述情境中选择最适合当前聊天情境的，最多{max_num}个情境。
 考虑因素包括：
-1. 聊天的情绪氛围（轻松、严肃、幽默等）
-2. 话题类型（日常、技术、游戏、情感等）
-3. 情境与当前语境的匹配度
+1.聊天的情绪氛围（轻松、严肃、幽默等）
+2.话题类型（日常、技术、游戏、情感等）
+3.情境与当前语境的匹配度
 {target_message_extra_block}
 
 请以JSON格式输出，只需要输出选中的情境编号：
@@ -44,6 +40,8 @@ def init_prompt():
 请严格按照JSON格式输出，不要包含其他内容：
 """
     Prompt(expression_evaluation_prompt, "expression_evaluation_prompt")
+
+
 
 
 class ExpressionSelector:
@@ -115,90 +113,14 @@ class ExpressionSelector:
                 return group_chat_ids
         return [chat_id]
 
-    def get_model_predicted_expressions(self, chat_id: str, target_message: str, total_num: int = 10) -> List[Dict[str, Any]]:
-        """
-        使用 style_learner 模型预测最合适的表达方式
-        
-        Args:
-            chat_id: 聊天室ID
-            target_message: 目标消息内容
-            total_num: 需要预测的数量
-            
-        Returns:
-            List[Dict[str, Any]]: 预测的表达方式列表
-        """
-        try:
-            # 过滤目标消息内容，移除回复、表情包等特殊格式
-            filtered_target_message = filter_message_content(target_message)
-            
-            logger.info(f"为{chat_id} 预测表达方式，过滤后的目标消息内容: {filtered_target_message}")
-            
-            # 支持多chat_id合并预测
-            related_chat_ids = self.get_related_chat_ids(chat_id)
-            
-
-            predicted_expressions = []
-            
-            # 为每个相关的chat_id进行预测
-            for related_chat_id in related_chat_ids:
-                try:
-                    # 使用 style_learner 预测最合适的风格
-                    best_style, scores = style_learner_manager.predict_style(
-                        related_chat_id, filtered_target_message, top_k=total_num
-                    )
-                    
-                    if best_style and scores:
-                        # 获取预测风格的完整信息
-                        learner = style_learner_manager.get_learner(related_chat_id)
-                        style_id, situation = learner.get_style_info(best_style)
-                        
-                        if style_id and situation:
-                            # 从数据库查找对应的表达记录
-                            expr_query = Expression.select().where(
-                                (Expression.chat_id == related_chat_id) &
-                                (Expression.situation == situation) &
-                                (Expression.style == best_style)
-                            )
-                            
-                            if expr_query.exists():
-                                expr = expr_query.get()
-                                predicted_expressions.append({
-                                    "id": expr.id,
-                                    "situation": expr.situation,
-                                    "style": expr.style,
-                                    "last_active_time": expr.last_active_time,
-                                    "source_id": expr.chat_id,
-                                    "create_date": expr.create_date if expr.create_date is not None else expr.last_active_time,
-                                    "prediction_score": scores.get(best_style, 0.0),
-                                    "prediction_input": filtered_target_message
-                                })
-                            else:
-                                logger.warning(f"为聊天室 {related_chat_id} 预测表达方式失败: {best_style} 没有找到对应的表达方式")
-                                
-                except Exception as e:
-                    logger.warning(f"为聊天室 {related_chat_id} 预测表达方式失败: {e}")
-                    continue
-            
-            # 按预测分数排序，取前 total_num 个
-            predicted_expressions.sort(key=lambda x: x.get("prediction_score", 0.0), reverse=True)
-            selected_expressions = predicted_expressions[:total_num]
-            
-            logger.info(f"为{chat_id} 预测到 {len(selected_expressions)} 个表达方式")
-            return selected_expressions
-            
-        except Exception as e:
-            logger.error(f"模型预测表达方式失败: {e}")
-            # 如果预测失败，回退到随机选择
-            return self._random_expressions(chat_id, total_num)
-    
     def _random_expressions(self, chat_id: str, total_num: int) -> List[Dict[str, Any]]:
         """
         随机选择表达方式
-        
+
         Args:
             chat_id: 聊天室ID
             total_num: 需要选择的数量
-            
+
         Returns:
             List[Dict[str, Any]]: 随机选择的表达方式列表
         """
@@ -207,9 +129,7 @@ class ExpressionSelector:
             related_chat_ids = self.get_related_chat_ids(chat_id)
 
             # 优化：一次性查询所有相关chat_id的表达方式
-            style_query = Expression.select().where(
-                (Expression.chat_id.in_(related_chat_ids))
-            )
+            style_query = Expression.select().where((Expression.chat_id.in_(related_chat_ids)))
 
             style_exprs = [
                 {
@@ -228,14 +148,13 @@ class ExpressionSelector:
                 selected_style = weighted_sample(style_exprs, total_num)
             else:
                 selected_style = []
-            
+
             logger.info(f"随机选择，为聊天室 {chat_id} 选择了 {len(selected_style)} 个表达方式")
             return selected_style
-            
+
         except Exception as e:
             logger.error(f"随机选择表达方式失败: {e}")
             return []
-
 
     async def select_suitable_expressions(
         self,
@@ -243,16 +162,18 @@ class ExpressionSelector:
         chat_info: str,
         max_num: int = 10,
         target_message: Optional[str] = None,
+        reply_reason: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], List[int]]:
         """
-        根据配置模式选择适合的表达方式
-        
+        选择适合的表达方式（使用classic模式：随机选择+LLM选择）
+
         Args:
             chat_id: 聊天流ID
             chat_info: 聊天内容信息
             max_num: 最大选择数量
             target_message: 目标消息内容
-            
+            reply_reason: planner给出的回复理由
+
         Returns:
             Tuple[List[Dict[str, Any]], List[int]]: 选中的表达方式列表和ID列表
         """
@@ -261,53 +182,9 @@ class ExpressionSelector:
             logger.debug(f"聊天流 {chat_id} 不允许使用表达，返回空列表")
             return [], []
 
-        # 获取配置模式
-        expression_mode = global_config.expression.mode
-        
-        if expression_mode == "exp_model":
-            # exp_model模式：直接使用模型预测，不经过LLM
-            logger.debug(f"使用exp_model模式为聊天流 {chat_id} 选择表达方式")
-            return await self._select_expressions_model_only(chat_id, target_message, max_num)
-        elif expression_mode == "classic":
-            # classic模式：随机选择+LLM选择
-            logger.debug(f"使用classic模式为聊天流 {chat_id} 选择表达方式")
-            return await self._select_expressions_classic(chat_id, chat_info, max_num, target_message)
-        else:
-            logger.warning(f"未知的表达模式: {expression_mode}，回退到classic模式")
-            return await self._select_expressions_classic(chat_id, chat_info, max_num, target_message)
-
-    async def _select_expressions_model_only(
-        self,
-        chat_id: str,
-        target_message: str,
-        max_num: int = 10,
-    ) -> Tuple[List[Dict[str, Any]], List[int]]:
-        """
-        exp_model模式：直接使用模型预测，不经过LLM
-        
-        Args:
-            chat_id: 聊天流ID
-            target_message: 目标消息内容
-            max_num: 最大选择数量
-            
-        Returns:
-            Tuple[List[Dict[str, Any]], List[int]]: 选中的表达方式列表和ID列表
-        """
-        try:
-            # 使用模型预测最合适的表达方式
-            selected_expressions = self.get_model_predicted_expressions(chat_id, target_message, max_num)
-            selected_ids = [expr["id"] for expr in selected_expressions]
-            
-            # 更新last_active_time
-            if selected_expressions:
-                self.update_expressions_last_active_time(selected_expressions)
-            
-            logger.info(f"exp_model模式为聊天流 {chat_id} 选择了 {len(selected_expressions)} 个表达方式")
-            return selected_expressions, selected_ids
-            
-        except Exception as e:
-            logger.error(f"exp_model模式选择表达方式失败: {e}")
-            return [], []
+        # 使用classic模式（随机选择+LLM选择）
+        logger.debug(f"使用classic模式为聊天流 {chat_id} 选择表达方式")
+        return await self._select_expressions_classic(chat_id, chat_info, max_num, target_message, reply_reason)
 
     async def _select_expressions_classic(
         self,
@@ -315,16 +192,18 @@ class ExpressionSelector:
         chat_info: str,
         max_num: int = 10,
         target_message: Optional[str] = None,
+        reply_reason: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], List[int]]:
         """
         classic模式：随机选择+LLM选择
-        
+
         Args:
             chat_id: 聊天流ID
             chat_info: 聊天内容信息
             max_num: 最大选择数量
             target_message: 目标消息内容
-            
+            reply_reason: planner给出的回复理由
+
         Returns:
             Tuple[List[Dict[str, Any]], List[int]]: 选中的表达方式列表和ID列表
         """
@@ -353,25 +232,38 @@ class ExpressionSelector:
             all_situations_str = "\n".join(all_situations)
 
             if target_message:
-                target_message_str = f"，现在你想要回复消息：{target_message}"
+                target_message_str = f"，现在你想要对这条消息进行回复：“{target_message}”"
                 target_message_extra_block = "4.考虑你要回复的目标消息"
             else:
                 target_message_str = ""
                 target_message_extra_block = ""
+                
+            chat_context = f"以下是正在进行的聊天内容：{chat_info}"
+    
+            # 构建reply_reason块
+            if reply_reason:
+                reply_reason_block = f"你的回复理由是：{reply_reason}"
+                chat_context = ""
+            else:
+                reply_reason_block = ""
 
             # 3. 构建prompt（只包含情境，不包含完整的表达方式）
             prompt = (await global_prompt_manager.get_prompt_async("expression_evaluation_prompt")).format(
                 bot_name=global_config.bot.nickname,
-                chat_observe_info=chat_info,
+                chat_observe_info=chat_context,
                 all_situations=all_situations_str,
                 max_num=max_num,
                 target_message=target_message_str,
                 target_message_extra_block=target_message_extra_block,
+                reply_reason_block=reply_reason_block,
             )
 
             # 4. 调用LLM
             content, (reasoning_content, model_name, _) = await self.llm_model.generate_response_async(prompt=prompt)
 
+            
+            # print(prompt)
+            
             if not content:
                 logger.warning("LLM返回空结果")
                 return [], []
@@ -425,17 +317,13 @@ class ExpressionSelector:
                 updates_by_key[key] = expr
         for chat_id, situation, style in updates_by_key:
             query = Expression.select().where(
-                (Expression.chat_id == chat_id)
-                & (Expression.situation == situation)
-                & (Expression.style == style)
+                (Expression.chat_id == chat_id) & (Expression.situation == situation) & (Expression.style == style)
             )
             if query.exists():
                 expr_obj = query.get()
                 expr_obj.last_active_time = time.time()
                 expr_obj.save()
-                logger.debug(
-                    "表达方式激活: 更新last_active_time in db"
-                )
+                logger.debug("表达方式激活: 更新last_active_time in db")
 
 
 init_prompt()

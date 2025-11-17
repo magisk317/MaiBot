@@ -62,11 +62,12 @@ apps_api.patch_namespaced_stateful_set(
     namespace=namespace,
     body=body,
 )
+print(f"StatefulSet `{release_name}-maibot-adapter` restarted successfully")
 apps_api.patch_namespaced_stateful_set(
     name=f'{release_name}-maibot-core',
     namespace=namespace,
     body=body,
 )
-print(f"StatefulSet `{release_name}-maibot-adapter` restarted successfully")
+print(f"StatefulSet `{release_name}-maibot-core` restarted successfully")
 
 print('Job succeed.')
