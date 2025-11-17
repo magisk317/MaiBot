@@ -29,7 +29,7 @@ spec:
               value: 99f08e0cab0190de853cb6af7d64d4de
             - name: PRIVACY_AGREE
               value: 9943b855e72199d0f5016ea39052f1b6
-          image: {{ .Values.core.image.repository | default "reg.mikumikumi.xyz/maibot/maibot" }}:{{ .Values.core.image.tag | default "tag-0.11.1-beta" }}
+          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.2-beta" }}
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
           ports:
             - containerPort: 8000
@@ -69,7 +69,7 @@ spec:
           command:
             - python3
           workingDir: /MaiMBot
-          image: {{ .Values.core.image.repository | default "reg.mikumikumi.xyz/maibot/maibot" }}:{{ .Values.core.image.tag | default "tag-0.11.1-beta" }}
+          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.2-beta" }}
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
           name: setup-plugins
           resources: { }
