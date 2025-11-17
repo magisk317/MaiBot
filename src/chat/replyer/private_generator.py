@@ -6,7 +6,6 @@ import re
 
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
-from src.memory_system.Memory_chest import global_memory_chest
 from src.common.logger import get_logger
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.data_models.info_data_model import ActionPlannerInfo
@@ -37,13 +36,16 @@ from src.plugin_system.apis import llm_api
 from src.chat.replyer.prompt.lpmm_prompt import init_lpmm_prompt
 from src.chat.replyer.prompt.replyer_prompt import init_replyer_prompt
 from src.chat.replyer.prompt.rewrite_prompt import init_rewrite_prompt
+from src.memory_system.memory_retrieval import init_memory_retrieval_prompt, build_memory_retrieval_prompt
 
 init_lpmm_prompt()
 init_replyer_prompt()
 init_rewrite_prompt()
+init_memory_retrieval_prompt()
 
 
 logger = get_logger("replyer")
+
 
 class PrivateReplyer:
     def __init__(
@@ -239,13 +241,14 @@ class PrivateReplyer:
 
         return f"{sender_relation}"
 
-    async def build_expression_habits(self, chat_history: str, target: str) -> Tuple[str, List[int]]:
+    async def build_expression_habits(self, chat_history: str, target: str, reply_reason: str = "") -> Tuple[str, List[int]]:
         # sourcery skip: for-append-to-extend
         """构建表达习惯块
 
         Args:
             chat_history: 聊天历史记录
             target: 目标消息内容
+            reply_reason: planner给出的回复理由
 
         Returns:
             str: 表达习惯信息字符串
@@ -256,9 +259,9 @@ class PrivateReplyer:
             return "", []
         style_habits = []
         # 使用从处理器传来的选中表达方式
-        # 根据配置模式选择表达方式：exp_model模式直接使用模型预测，classic模式使用LLM选择
+        # 使用模型预测选择表达方式
         selected_expressions, selected_ids = await expression_selector.select_suitable_expressions(
-            self.chat_stream.stream_id, chat_history, max_num=8, target_message=target
+            self.chat_stream.stream_id, chat_history, max_num=8, target_message=target, reply_reason=reply_reason
         )
 
         if selected_expressions:
@@ -276,9 +279,7 @@ class PrivateReplyer:
         expression_habits_block = ""
         expression_habits_title = ""
         if style_habits_str.strip():
-            expression_habits_title = (
-                "在回复时,你可以参考以下的语言习惯，不要生硬使用："
-            )
+            expression_habits_title = "在回复时,你可以参考以下的语言习惯，不要生硬使用："
             expression_habits_block += f"{style_habits_str}\n"
 
         return f"{expression_habits_title}\n{expression_habits_block}", selected_ids
@@ -290,15 +291,6 @@ class PrivateReplyer:
         mood_state = await mood_manager.get_mood_by_chat_id(self.chat_stream.stream_id).get_mood()
         return f"你现在的心情是：{mood_state}"
 
-
-    async def build_memory_block(self) -> str:
-        """构建记忆块
-        """
-        if global_memory_chest.get_chat_memories_as_string(self.chat_stream.stream_id):
-            return f"你有以下记忆：\n{global_memory_chest.get_chat_memories_as_string(self.chat_stream.stream_id)}"
-        else:
-            return ""
-    
     async def build_tool_info(self, chat_history: str, sender: str, target: str, enable_tool: bool = True) -> str:
         """构建工具信息块
 
@@ -365,45 +357,45 @@ class PrivateReplyer:
 
     def _replace_picids_with_descriptions(self, text: str) -> str:
         """将文本中的[picid:xxx]替换为具体的图片描述
-        
+
         Args:
             text: 包含picid标记的文本
-            
+
         Returns:
             替换后的文本
         """
         # 匹配 [picid:xxxxx] 格式
         pic_pattern = r"\[picid:([^\]]+)\]"
-        
+
         def replace_pic_id(match: re.Match) -> str:
             pic_id = match.group(1)
             description = translate_pid_to_description(pic_id)
             return f"[图片：{description}]"
-        
+
         return re.sub(pic_pattern, replace_pic_id, text)
 
     def _analyze_target_content(self, target: str) -> Tuple[bool, bool, str, str]:
         """分析target内容类型（基于原始picid格式）
-        
+
         Args:
             target: 目标消息内容（包含[picid:xxx]格式）
-            
+
         Returns:
             Tuple[bool, bool, str, str]: (是否只包含图片, 是否包含文字, 图片部分, 文字部分)
         """
         if not target or not target.strip():
             return False, False, "", ""
-            
+
         # 检查是否只包含picid标记
         picid_pattern = r"\[picid:[^\]]+\]"
         picid_matches = re.findall(picid_pattern, target)
-        
+
         # 移除所有picid标记后检查是否还有文字内容
         text_without_picids = re.sub(picid_pattern, "", target).strip()
-        
+
         has_only_pics = len(picid_matches) > 0 and not text_without_picids
         has_text = bool(text_without_picids)
-        
+
         # 提取图片部分（转换为[图片:描述]格式）
         pic_part = ""
         if picid_matches:
@@ -418,7 +410,7 @@ class PrivateReplyer:
                 else:
                     pic_descriptions.append(f"[图片:{description}]")
             pic_part = "".join(pic_descriptions)
-        
+
         return has_only_pics, has_text, pic_part, text_without_picids
 
     async def build_keywords_reaction_prompt(self, target: Optional[str]) -> str:
@@ -524,17 +516,96 @@ class PrivateReplyer:
 
         # 获取基础personality
         prompt_personality = global_config.personality.personality
-        
+
         # 检查是否需要随机替换为状态
-        if (global_config.personality.states and 
-            global_config.personality.state_probability > 0 and 
-            random.random() < global_config.personality.state_probability):
+        if (
+            global_config.personality.states
+            and global_config.personality.state_probability > 0
+            and random.random() < global_config.personality.state_probability
+        ):
             # 随机选择一个状态替换personality
             selected_state = random.choice(global_config.personality.states)
             prompt_personality = selected_state
-        
+
         prompt_personality = f"{prompt_personality};"
         return f"你的名字是{bot_name}{bot_nickname}，你{prompt_personality}"
+
+    def _parse_chat_prompt_config_to_chat_id(self, chat_prompt_str: str) -> Optional[tuple[str, str]]:
+        """
+        解析聊天prompt配置字符串并生成对应的 chat_id 和 prompt内容
+
+        Args:
+            chat_prompt_str: 格式为 "platform:id:type:prompt内容" 的字符串
+
+        Returns:
+            tuple: (chat_id, prompt_content)，如果解析失败则返回 None
+        """
+        try:
+            # 使用 split 分割，但限制分割次数为3，因为prompt内容可能包含冒号
+            parts = chat_prompt_str.split(":", 3)
+            if len(parts) != 4:
+                return None
+
+            platform = parts[0]
+            id_str = parts[1]
+            stream_type = parts[2]
+            prompt_content = parts[3]
+
+            # 判断是否为群聊
+            is_group = stream_type == "group"
+
+            # 使用与 ChatStream.get_stream_id 相同的逻辑生成 chat_id
+            import hashlib
+
+            if is_group:
+                components = [platform, str(id_str)]
+            else:
+                components = [platform, str(id_str), "private"]
+            key = "_".join(components)
+            chat_id = hashlib.md5(key.encode()).hexdigest()
+
+            return chat_id, prompt_content
+
+        except (ValueError, IndexError):
+            return None
+
+    def get_chat_prompt_for_chat(self, chat_id: str) -> str:
+        """
+        根据聊天流ID获取匹配的额外prompt（仅匹配private类型）
+
+        Args:
+            chat_id: 聊天流ID（哈希值）
+
+        Returns:
+            str: 匹配的额外prompt内容，如果没有匹配则返回空字符串
+        """
+        if not global_config.experimental.chat_prompts:
+            return ""
+
+        for chat_prompt_str in global_config.experimental.chat_prompts:
+            if not isinstance(chat_prompt_str, str):
+                continue
+
+            # 解析配置字符串，检查类型是否为private
+            parts = chat_prompt_str.split(":", 3)
+            if len(parts) != 4:
+                continue
+
+            stream_type = parts[2]
+            # 只匹配private类型
+            if stream_type != "private":
+                continue
+
+            result = self._parse_chat_prompt_config_to_chat_id(chat_prompt_str)
+            if result is None:
+                continue
+
+            config_chat_id, prompt_content = result
+            if config_chat_id == chat_id:
+                logger.debug(f"匹配到私聊prompt配置，chat_id: {chat_id}, prompt: {prompt_content[:50]}...")
+                return prompt_content
+
+        return ""
 
     async def build_prompt_reply_context(
         self,
@@ -577,13 +648,11 @@ class PrivateReplyer:
             sender = person_name
             target = reply_message.processed_plain_text
 
-
-
         target = replace_user_references(target, chat_stream.platform, replace_bot_name=True)
-        
+
         # 在picid替换之前分析内容类型（防止prompt注入）
         has_only_pics, has_text, pic_part, text_part = self._analyze_target_content(target)
-        
+
         # 将[picid:xxx]替换为具体的图片描述
         target = self._replace_picids_with_descriptions(target)
 
@@ -592,7 +661,7 @@ class PrivateReplyer:
             timestamp=time.time(),
             limit=global_config.chat.max_context_size,
         )
-        
+
         dialogue_prompt = build_readable_messages(
             message_list_before_now_long,
             replace_bot_name=True,
@@ -635,16 +704,12 @@ class PrivateReplyer:
             show_actions=True,
         )
 
-        # 并行执行五个构建任务
+        # 并行执行八个构建任务
         task_results = await asyncio.gather(
             self._time_and_run_task(
-                self.build_expression_habits(chat_talking_prompt_short, target), "expression_habits"
+                self.build_expression_habits(chat_talking_prompt_short, target, reply_reason), "expression_habits"
             ),
-            self._time_and_run_task(
-                self.build_relation_info(chat_talking_prompt_short, sender), "relation_info"
-            ),
-            self._time_and_run_task(self.build_memory_block(), "memory_block"),
-            # self._time_and_run_task(self.build_memory_block(message_list_before_short, target), "memory_block"),
+            self._time_and_run_task(self.build_relation_info(chat_talking_prompt_short, sender), "relation_info"),
             self._time_and_run_task(
                 self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool), "tool_info"
             ),
@@ -652,18 +717,24 @@ class PrivateReplyer:
             self._time_and_run_task(self.build_actions_prompt(available_actions, chosen_actions), "actions_info"),
             self._time_and_run_task(self.build_personality_prompt(), "personality_prompt"),
             self._time_and_run_task(self.build_mood_state_prompt(), "mood_state_prompt"),
+            self._time_and_run_task(
+                build_memory_retrieval_prompt(
+                    chat_talking_prompt_short, sender, target, self.chat_stream, self.tool_executor
+                ),
+                "memory_retrieval",
+            ),
         )
 
         # 任务名称中英文映射
         task_name_mapping = {
             "expression_habits": "选取表达方式",
             "relation_info": "感受关系",
-            "memory_block": "回忆",
             "tool_info": "使用工具",
             "prompt_info": "获取知识",
             "actions_info": "动作信息",
             "personality_prompt": "人格信息",
             "mood_state_prompt": "情绪状态",
+            "memory_retrieval": "记忆检索",
         }
 
         # 处理结果
@@ -687,13 +758,19 @@ class PrivateReplyer:
         expression_habits_block: str
         selected_expressions: List[int]
         relation_info: str = results_dict["relation_info"]
-        memory_block: str = results_dict["memory_block"]
         tool_info: str = results_dict["tool_info"]
         prompt_info: str = results_dict["prompt_info"]  # 直接使用格式化后的结果
         actions_info: str = results_dict["actions_info"]
         personality_prompt: str = results_dict["personality_prompt"]
         mood_state_prompt: str = results_dict["mood_state_prompt"]
+        memory_retrieval: str = results_dict["memory_retrieval"]
         keywords_reaction_prompt = await self.build_keywords_reaction_prompt(target)
+
+        # 从 chosen_actions 中提取 planner 的整体思考理由
+        planner_reasoning = ""
+        if global_config.chat.include_planner_reasoning and reply_reason:
+            # 如果没有 chosen_actions，使用 reply_reason 作为备选
+            planner_reasoning = f"你的想法是：{reply_reason}"
 
         if extra_info:
             extra_info_block = f"以下是你在回复时需要参考的信息，现在请你阅读以下内容，进行决策\n{extra_info}\n以上是你在回复时需要参考的信息，现在请你阅读以下内容，进行决策"
@@ -718,6 +795,10 @@ class PrivateReplyer:
             # 其他情况（空内容等）
             reply_target_block = f"现在对方说的:{target}。引起了你的注意"
 
+        # 获取匹配的额外prompt
+        chat_prompt_content = self.get_chat_prompt_for_chat(chat_id)
+        chat_prompt_block = f"{chat_prompt_content}\n" if chat_prompt_content else ""
+
         if global_config.bot.qq_account == user_id and platform == global_config.bot.platform:
             return await global_prompt_manager.format_prompt(
                 "private_replyer_self_prompt",
@@ -725,7 +806,6 @@ class PrivateReplyer:
                 tool_info_block=tool_info,
                 knowledge_prompt=prompt_info,
                 mood_state=mood_state_prompt,
-                memory_block=memory_block,
                 relation_info_block=relation_info,
                 extra_info_block=extra_info_block,
                 identity=personality_prompt,
@@ -738,6 +818,8 @@ class PrivateReplyer:
                 reply_style=global_config.personality.reply_style,
                 keywords_reaction_prompt=keywords_reaction_prompt,
                 moderation_prompt=moderation_prompt_block,
+                memory_retrieval=memory_retrieval,
+                chat_prompt=chat_prompt_block,
             ), selected_expressions
         else:
             return await global_prompt_manager.format_prompt(
@@ -746,7 +828,6 @@ class PrivateReplyer:
                 tool_info_block=tool_info,
                 knowledge_prompt=prompt_info,
                 mood_state=mood_state_prompt,
-                memory_block=memory_block,
                 relation_info_block=relation_info,
                 extra_info_block=extra_info_block,
                 identity=personality_prompt,
@@ -758,6 +839,9 @@ class PrivateReplyer:
                 keywords_reaction_prompt=keywords_reaction_prompt,
                 moderation_prompt=moderation_prompt_block,
                 sender_name=sender,
+                memory_retrieval=memory_retrieval,
+                chat_prompt=chat_prompt_block,
+                planner_reasoning=planner_reasoning,
             ), selected_expressions
 
     async def build_prompt_rewrite_context(
@@ -772,14 +856,12 @@ class PrivateReplyer:
 
         sender, target = self._parse_reply_target(reply_to)
         target = replace_user_references(target, chat_stream.platform, replace_bot_name=True)
-        
+
         # 在picid替换之前分析内容类型（防止prompt注入）
         has_only_pics, has_text, pic_part, text_part = self._analyze_target_content(target)
-        
+
         # 将[picid:xxx]替换为具体的图片描述
         target = self._replace_picids_with_descriptions(target)
-
-
 
         message_list_before_now_half = get_raw_msg_before_timestamp_with_chat(
             chat_id=chat_id,
@@ -820,9 +902,7 @@ class PrivateReplyer:
                         )
                     elif has_text and pic_part:
                         # 既有图片又有文字
-                        reply_target_block = (
-                            f"现在{sender}发送了图片：{pic_part}，并说：{text_part}。引起了你的注意，你想要在群里发言或者回复这条消息。"
-                        )
+                        reply_target_block = f"现在{sender}发送了图片：{pic_part}，并说：{text_part}。引起了你的注意，你想要在群里发言或者回复这条消息。"
                     else:
                         # 只包含文字
                         reply_target_block = (
@@ -839,7 +919,9 @@ class PrivateReplyer:
                         reply_target_block = f"现在{sender}发送的图片：{pic_part}。引起了你的注意，针对这条消息回复。"
                     elif has_text and pic_part:
                         # 既有图片又有文字
-                        reply_target_block = f"现在{sender}发送了图片：{pic_part}，并说：{text_part}。引起了你的注意，针对这条消息回复。"
+                        reply_target_block = (
+                            f"现在{sender}发送了图片：{pic_part}，并说：{text_part}。引起了你的注意，针对这条消息回复。"
+                        )
                     else:
                         # 只包含文字
                         reply_target_block = f"现在{sender}说的:{text_part}。引起了你的注意，针对这条消息回复。"
@@ -930,7 +1012,7 @@ class PrivateReplyer:
             content, (reasoning_content, model_name, tool_calls) = await self.express_model.generate_response_async(
                 prompt
             )
-            
+
             content = content.strip()
 
             logger.info(f"使用 {model_name} 生成回复内容: {content}")
@@ -950,6 +1032,10 @@ class PrivateReplyer:
             if not global_config.lpmm_knowledge.enable:
                 logger.debug("LPMM知识库未启用，跳过获取知识库内容")
                 return ""
+            
+            if global_config.lpmm_knowledge.lpmm_mode == "agent":
+                return ""
+            
             time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
             bot_name = global_config.bot.nickname
@@ -1022,6 +1108,3 @@ def weighted_sample_no_replacement(items, weights, k) -> list:
                 pool.pop(idx)
                 break
     return selected
-
-
-

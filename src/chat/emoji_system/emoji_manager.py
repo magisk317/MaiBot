@@ -940,14 +940,12 @@ class EmojiManager:
                     image_base64 = get_image_manager().transform_gif(image_base64)  # type: ignore
                     if not image_base64:
                         raise RuntimeError("GIF表情包转换失败")
-                    prompt = "这是一个动态图表情包，每一张图代表了动态图的某一帧，黑色背景代表透明，简短描述一下表情包表达的情感和内容，描述细节，从互联网梗,meme的角度去分析"
+                    prompt = "这是一个动态图表情包，每一张图代表了动态图的某一帧，黑色背景代表透明，简短描述一下表情包表达的情感和内容，从互联网梗,meme的角度去分析，精简回答"
                     description, _ = await self.vlm.generate_response_for_image(
                         prompt, image_base64, "jpg", temperature=0.5
                     )
                 else:
-                    prompt = (
-                        "这是一个表情包，请详细描述一下表情包所表达的情感和内容，简短描述细节，从互联网梗,meme的角度去分析"
-                    )
+                    prompt = "这是一个表情包，请详细描述一下表情包所表达的情感和内容，简短描述细节，从互联网梗,meme的角度去分析，精简回答"
                     description, _ = await self.vlm.generate_response_for_image(
                         prompt, image_base64, image_format, temperature=0.5
                     )

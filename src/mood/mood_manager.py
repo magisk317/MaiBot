@@ -1,10 +1,7 @@
-import math
-import random
 import time
 
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
-from src.chat.message_receive.message import MessageRecv
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_by_timestamp_with_chat_inclusive
@@ -25,7 +22,7 @@ def init_prompt():
 你先前的情绪状态是：{mood_state}
 你的情绪特点是:{emotion_style}
 
-现在，请你根据先前的情绪状态和现在的聊天内容，总结推断你现在的情绪状态
+现在，请你根据先前的情绪状态和现在的聊天内容，总结推断你现在的情绪状态，用简短的词句来描述情绪状态
 请只输出新的情绪状态，不要输出其他内容：
 """,
         "get_mood_prompt",
@@ -39,7 +36,7 @@ def init_prompt():
 {identity_block}
 你之前的情绪状态是：{mood_state}
 
-距离你上次关注群里消息已经过去了一段时间，你冷静了下来，请你输出一句话描述你现在的情绪状态
+距离你上次关注群里消息已经过去了一段时间，你冷静了下来，请你输出一句话或几个词来描述你现在的情绪状态
 你的情绪特点是:{emotion_style}
 请只输出新的情绪状态，不要输出其他内容：
 """,

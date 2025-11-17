@@ -20,6 +20,7 @@ from src.plugin_system.apis import (
     tool_api,
     frequency_api,
     mood_api,
+    auto_talk_api,
 )
 from .logging_api import get_logger
 from .plugin_register_api import register_plugin
@@ -42,4 +43,5 @@ __all__ = [
     "tool_api",
     "frequency_api",
     "mood_api",
+    "auto_talk_api",
 ]

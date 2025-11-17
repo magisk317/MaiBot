@@ -30,7 +30,7 @@ else:
         raise
 
 # 最早期初始化日志系统，确保所有后续模块都使用正确的日志格式
-from src.common.logger import initialize_logging, get_logger, shutdown_logging
+from src.common.logger import initialize_logging, get_logger, shutdown_logging #noqa
 
 initialize_logging()
 

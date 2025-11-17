@@ -15,7 +15,6 @@ from src.chat.heart_flow.heartflow_message_processor import HeartFCMessageReceiv
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.plugin_system.core import component_registry, events_manager, global_announcement_manager
 from src.plugin_system.base import BaseCommand, EventType
-from src.person_info.person_info import Person
 
 # 定义日志配置
 
@@ -171,7 +170,11 @@ class ChatBot:
 
                 # 撤回事件打印；无法获取被撤回者则省略
                 if sub_type == "recall":
-                    op_name = getattr(op, "user_cardname", None) or getattr(op, "user_nickname", None) or str(getattr(op, "user_id", None))
+                    op_name = (
+                        getattr(op, "user_cardname", None)
+                        or getattr(op, "user_nickname", None)
+                        or str(getattr(op, "user_id", None))
+                    )
                     recalled_name = None
                     try:
                         if isinstance(recalled, dict):
@@ -189,7 +192,7 @@ class ChatBot:
                         logger.info(f"{op_name} 撤回了消息")
                 else:
                     logger.debug(
-                        f"[notice] sub_type={sub_type} scene={scene} op={getattr(op,'user_nickname',None)}({getattr(op,'user_id',None)}) "
+                        f"[notice] sub_type={sub_type} scene={scene} op={getattr(op, 'user_nickname', None)}({getattr(op, 'user_id', None)}) "
                         f"gid={gid} msg_id={msg_id} recalled={recalled_id}"
                     )
             except Exception:
@@ -234,7 +237,6 @@ class ChatBot:
             # 确保所有任务已启动
             await self._ensure_started()
 
-
             if message_data["message_info"].get("group_info") is not None:
                 message_data["message_info"]["group_info"]["group_id"] = str(
                     message_data["message_info"]["group_info"]["group_id"]
@@ -258,7 +260,7 @@ class ChatBot:
                 message.message_segment = Seg(type="seglist", data=modified_message.message_segments)
 
             if await self.handle_notice_message(message):
-                return
+                pass
 
             # 处理消息内容，生成纯文本
             await message.process()

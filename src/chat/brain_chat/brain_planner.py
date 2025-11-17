@@ -442,7 +442,7 @@ class BrainPlanner:
             # logger.info(f"{self.log_prefix}规划器原始提示词: {prompt}")
             # logger.info(f"{self.log_prefix}规划器原始响应: {llm_content}")
 
-            if global_config.debug.show_prompt:
+            if global_config.debug.show_planner_prompt:
                 logger.info(f"{self.log_prefix}规划器原始提示词: {prompt}")
                 logger.info(f"{self.log_prefix}规划器原始响应: {llm_content}")
                 if reasoning_content:

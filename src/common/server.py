@@ -18,8 +18,8 @@ class Server:
 
         # 配置 CORS
         origins = [
-            "http://localhost:3000",  # 允许的前端源
-            "http://127.0.0.1:3000",
+            "http://localhost:7999",  # 允许的前端源
+            "http://127.0.0.1:7999",
             # 在生产环境中，您应该添加实际的前端域名
         ]
 

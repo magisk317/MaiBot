@@ -166,6 +166,57 @@ class LLMRequest:
                 time_cost=time.time() - start_time,
             )
         return content or "", (reasoning_content, model_info.name, tool_calls)
+    
+    async def generate_response_with_message_async(
+        self,
+        message_factory: Callable[[BaseClient], List[Message]],
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        raise_when_empty: bool = True,
+    ) -> Tuple[str, Tuple[str, str, Optional[List[ToolCall]]]]:
+        """
+        异步生成响应
+        Args:
+            message_factory (Callable[[BaseClient], List[Message]]): 已构建好的消息工厂
+            temperature (float, optional): 温度参数
+            max_tokens (int, optional): 最大token数
+            tools (Optional[List[Dict[str, Any]]]): 工具列表
+            raise_when_empty (bool): 当响应为空时是否抛出异常
+        Returns:
+            (Tuple[str, str, str, Optional[List[ToolCall]]]): 响应内容、推理内容、模型名称、工具调用列表
+        """
+        start_time = time.time()
+
+        tool_built = self._build_tool_options(tools)
+
+        response, model_info = await self._execute_request(
+            request_type=RequestType.RESPONSE,
+            message_factory=message_factory,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tool_options=tool_built,
+        )
+
+        logger.debug(f"LLM请求总耗时: {time.time() - start_time}")
+        logger.debug(f"LLM生成内容: {response}")
+
+        content = response.content
+        reasoning_content = response.reasoning_content or ""
+        tool_calls = response.tool_calls
+        if not reasoning_content and content:
+            content, extracted_reasoning = self._extract_reasoning(content)
+            reasoning_content = extracted_reasoning
+        if usage := response.usage:
+            llm_usage_recorder.record_usage_to_database(
+                model_info=model_info,
+                model_usage=usage,
+                user_id="system",
+                request_type=self.request_type,
+                endpoint="/chat/completions",
+                time_cost=time.time() - start_time,
+            )
+        return content or "", (reasoning_content, model_info.name, tool_calls)
 
     async def get_embedding(self, embedding_input: str) -> Tuple[List[float], str]:
         """
@@ -277,9 +328,7 @@ class LLMRequest:
                     logger.error(f"模型 '{model_info.name}' 在多次出现空回复后仍然失败。")
                     raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
 
-                logger.warning(
-                    f"模型 '{model_info.name}' 返回空回复(可重试)。剩余重试次数: {retry_remain}"
-                )
+                logger.warning(f"模型 '{model_info.name}' 返回空回复(可重试)。剩余重试次数: {retry_remain}")
                 await asyncio.sleep(api_provider.retry_interval)
 
             except NetworkConnectionError as e:
@@ -289,9 +338,7 @@ class LLMRequest:
                     logger.error(f"模型 '{model_info.name}' 在网络错误重试用尽后仍然失败。")
                     raise ModelAttemptFailed(f"模型 '{model_info.name}' 重试耗尽", original_exception=e) from e
 
-                logger.warning(
-                    f"模型 '{model_info.name}' 遇到网络错误(可重试): {str(e)}。剩余重试次数: {retry_remain}"
-                )
+                logger.warning(f"模型 '{model_info.name}' 遇到网络错误(可重试): {str(e)}。剩余重试次数: {retry_remain}")
                 await asyncio.sleep(api_provider.retry_interval)
 
             except RespNotOkException as e:

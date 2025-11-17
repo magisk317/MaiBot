@@ -4,14 +4,11 @@ import time
 import jieba
 import json
 import ast
-import numpy as np
 
-from collections import Counter
 from typing import Optional, Tuple, List, TYPE_CHECKING
 
 from src.common.logger import get_logger
 from src.common.data_models.database_data_model import DatabaseMessages
-from src.common.message_repository import find_messages, count_messages
 from src.config.config import global_config, model_config
 from src.chat.message_receive.message import MessageRecv
 from src.chat.message_receive.chat_stream import get_chat_manager
@@ -32,10 +29,10 @@ def is_english_letter(char: str) -> bool:
 
 def parse_platform_accounts(platforms: list[str]) -> dict[str, str]:
     """解析 platforms 列表，返回平台到账号的映射
-    
+
     Args:
         platforms: 格式为 ["platform:account"] 的列表，如 ["tg:123456789", "wx:wxid123"]
-    
+
     Returns:
         字典，键为平台名，值为账号
     """
@@ -49,12 +46,12 @@ def parse_platform_accounts(platforms: list[str]) -> dict[str, str]:
 
 def get_current_platform_account(platform: str, platform_accounts: dict[str, str], qq_account: str) -> str:
     """根据当前平台获取对应的账号
-    
+
     Args:
         platform: 当前消息的平台
         platform_accounts: 从 platforms 列表解析的平台账号映射
         qq_account: QQ 账号（兼容旧配置）
-    
+
     Returns:
         当前平台对应的账号
     """
@@ -72,12 +69,12 @@ def is_mentioned_bot_in_message(message: MessageRecv) -> tuple[bool, bool, float
     """检查消息是否提到了机器人（统一多平台实现）"""
     text = message.processed_plain_text or ""
     platform = getattr(message.message_info, "platform", "") or ""
-    
+
     # 获取各平台账号
     platforms_list = getattr(global_config.bot, "platforms", []) or []
     platform_accounts = parse_platform_accounts(platforms_list)
     qq_account = str(getattr(global_config.bot, "qq_account", "") or "")
-    
+
     # 获取当前平台对应的账号
     current_account = get_current_platform_account(platform, platform_accounts, qq_account)
 
@@ -146,7 +143,9 @@ def is_mentioned_bot_in_message(message: MessageRecv) -> tuple[bool, bool, float
         elif current_account:
             if re.search(rf"\[回复 (.+?)\({re.escape(current_account)}\)：(.+?)\]，说：", text):
                 is_mentioned = True
-            elif re.search(rf"\[回复<(.+?)(?=:{re.escape(current_account)}>)\:{re.escape(current_account)}>：(.+?)\]，说：", text):
+            elif re.search(
+                rf"\[回复<(.+?)(?=:{re.escape(current_account)}>)\:{re.escape(current_account)}>：(.+?)\]，说：", text
+            ):
                 is_mentioned = True
 
     # 6) 名称/别名 提及（去除 @/回复标记后再匹配）
@@ -185,7 +184,6 @@ async def get_embedding(text, request_type="embedding") -> Optional[List[float]]
     return embedding
 
 
-
 def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
     """将文本分割成句子，并根据概率合并
     1. 识别分割点（, ， 。 ; 空格），但如果分割点左右都是英文字母则不分割。
@@ -221,14 +219,17 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
     while i < len(text):
         char = text[i]
         if char in separators:
-            # 检查分割条件：如果分隔符左右都是英文字母，则不分割
+            # 检查分割条件：如果空格左右都是英文字母、数字，或数字和英文之间，则不分割（仅对空格应用此规则）
             can_split = True
             if 0 < i < len(text) - 1:
                 prev_char = text[i - 1]
                 next_char = text[i + 1]
-                # if is_english_letter(prev_char) and is_english_letter(next_char) and char == ' ': # 原计划只对空格应用此规则，现应用于所有分隔符
-                if is_english_letter(prev_char) and is_english_letter(next_char):
-                    can_split = False
+                # 只对空格应用"不分割数字和数字、数字和英文、英文和数字、英文和英文之间的空格"规则
+                if char == " ":
+                    prev_is_alnum = prev_char.isdigit() or is_english_letter(prev_char)
+                    next_is_alnum = next_char.isdigit() or is_english_letter(next_char)
+                    if prev_is_alnum and next_is_alnum:
+                        can_split = False
 
             if can_split:
                 # 只有当当前段不为空时才添加
@@ -328,6 +329,20 @@ def random_remove_punctuation(text: str) -> str:
     return result
 
 
+def _get_random_default_reply() -> str:
+    """获取随机默认回复"""
+    default_replies = [
+        f"{global_config.bot.nickname}不知道哦",
+        f"{global_config.bot.nickname}不知道",
+        "不知道哦",
+        "不知道",
+        "不晓得",
+        "懒得说",
+        "()",
+    ]
+    return random.choice(default_replies)
+
+
 def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese_typo: bool = True) -> list[str]:
     if not global_config.response_post_process.enable_response_post_process:
         return [text]
@@ -356,7 +371,7 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
     # 如果基本上是中文，则进行长度过滤
     if get_western_ratio(cleaned_text) < 0.1 and len(cleaned_text) > max_length:
         logger.warning(f"回复过长 ({len(cleaned_text)} 字符)，返回默认回复")
-        return ["懒得说"]
+        return [_get_random_default_reply()]
 
     typo_generator = ChineseTypoGenerator(
         error_rate=global_config.chinese_typo.error_rate,
@@ -374,15 +389,26 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
     for sentence in split_sentences:
         if global_config.chinese_typo.enable and enable_chinese_typo:
             typoed_text, typo_corrections = typo_generator.create_typo_sentence(sentence)
-            sentences.append(typoed_text)
             if typo_corrections:
-                sentences.append(typo_corrections)
+                # 50%概率新增正确字/词，50%概率用正确分句替换错别字分句
+                if random.random() < 0.5:
+                    sentences.append(typoed_text)
+                    sentences.append(typo_corrections)
+                else:
+                    # 用正确的分句替换错别字分句
+                    sentences.append(sentence)
+            else:
+                sentences.append(typoed_text)
         else:
             sentences.append(sentence)
 
     if len(sentences) > max_sentence_num:
-        logger.warning(f"分割后消息数量过多 ({len(sentences)} 条)，返回默认回复")
-        return [f"{global_config.bot.nickname}不知道哦"]
+        if global_config.response_splitter.enable_overflow_return_all:
+            logger.warning(f"分割后消息数量过多 ({len(sentences)} 条)，直接返回原文")
+            sentences = [cleaned_text]
+        else:
+            logger.warning(f"分割后消息数量过多 ({len(sentences)} 条)，返回默认回复")
+            return [_get_random_default_reply()]
 
     # if extracted_contents:
     #     for content in extracted_contents:
@@ -439,7 +465,6 @@ def calculate_typing_time(
     # print(f"{total_time}")
 
     return total_time  # 加上回车时间
-
 
 
 def truncate_message(message: str, max_length=20) -> str:
@@ -516,7 +541,6 @@ def get_western_ratio(paragraph):
 
     western_count = sum(bool(is_english_letter(char)) for char in alnum_chars)
     return western_count / len(alnum_chars)
-
 
 
 def translate_timestamp_to_human_readable(timestamp: float, mode: str = "normal") -> str:

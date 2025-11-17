@@ -5,6 +5,8 @@ from maim_message import MessageServer
 from src.common.remote import TelemetryHeartBeatTask
 from src.manager.async_task_manager import async_task_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
+
+# from src.chat.utils.token_statistics import TokenStatisticsTask
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.config.config import global_config
@@ -13,7 +15,6 @@ from src.common.logger import get_logger
 from src.common.server import get_global_server, Server
 from src.mood.mood_manager import mood_manager
 from src.chat.knowledge import lpmm_start_up
-from src.memory_system.memory_management_task import MemoryManagementTask
 from rich.traceback import install
 # from src.api.main import start_api_server
 
@@ -35,6 +36,37 @@ class MainSystem:
         # 使用消息API替代直接的FastAPI实例
         self.app: MessageServer = get_global_api()
         self.server: Server = get_global_server()
+        
+        # 注册 WebUI API 路由
+        self._register_webui_routes()
+        
+        # 设置 WebUI（开发/生产模式）
+        self._setup_webui()
+
+    def _register_webui_routes(self):
+        """注册 WebUI API 路由"""
+        try:
+            from src.webui.routes import router as webui_router
+            self.server.register_router(webui_router)
+            logger.info("WebUI API 路由已注册")
+        except Exception as e:
+            logger.warning(f"注册 WebUI API 路由失败: {e}")
+
+    def _setup_webui(self):
+        """设置 WebUI（根据环境变量决定模式）"""
+        import os
+        webui_enabled = os.getenv("WEBUI_ENABLED", "false").lower() == "true"
+        if not webui_enabled:
+            logger.info("WebUI 已禁用")
+            return
+        
+        webui_mode = os.getenv("WEBUI_MODE", "production").lower()
+        
+        try:
+            from src.webui.manager import setup_webui
+            setup_webui(mode=webui_mode)
+        except Exception as e:
+            logger.error(f"设置 WebUI 失败: {e}")
 
     async def initialize(self):
         """初始化系统组件"""
@@ -65,8 +97,16 @@ class MainSystem:
         # 添加统计信息输出任务
         await async_task_manager.add_task(StatisticOutputTask())
 
+        # 添加聊天流统计任务（每5分钟生成一次报告，统计最近30天的数据）
+        # await async_task_manager.add_task(TokenStatisticsTask())
+
         # 添加遥测心跳任务
         await async_task_manager.add_task(TelemetryHeartBeatTask())
+
+        # 添加记忆遗忘任务
+        from src.chat.utils.memory_forget_task import MemoryForgetTask
+
+        await async_task_manager.add_task(MemoryForgetTask())
 
         # 启动API服务器
         # start_api_server()
@@ -92,17 +132,12 @@ class MainSystem:
         asyncio.create_task(get_chat_manager()._auto_save_task())
 
         logger.info("聊天管理器初始化成功")
-        
-        # 添加记忆管理任务
-        await async_task_manager.add_task(MemoryManagementTask())
-        logger.info("记忆管理任务已启动")
 
         # await asyncio.sleep(0.5) #防止logger输出飞了
 
         # 将bot.py中的chat_bot.message_process消息处理函数注册到api.py的消息处理基类中
         self.app.register_message_handler(chat_bot.message_process)
         self.app.register_custom_message_handler("message_id_echo", chat_bot.echo_message_process)
-
 
         # 触发 ON_START 事件
         from src.plugin_system.core.events_manager import events_manager
