@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware  # 新增导入
 from typing import Optional
 from uvicorn import Config, Server as UvicornServer
+import asyncio
 import os
 from rich.traceback import install
 
@@ -82,8 +83,17 @@ class Server:
         """安全关闭服务器"""
         if self._server:
             self._server.should_exit = True
-            await self._server.shutdown()
-            self._server = None
+            try:
+                # 添加 3 秒超时，避免 shutdown 永久挂起
+                await asyncio.wait_for(self._server.shutdown(), timeout=3.0)
+            except asyncio.TimeoutError:
+                # 超时就强制标记为 None，让垃圾回收处理
+                pass
+            except Exception:
+                # 忽略其他异常
+                pass
+            finally:
+                self._server = None
 
     def get_app(self) -> FastAPI:
         """获取 FastAPI 实例"""

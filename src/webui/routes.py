@@ -4,11 +4,33 @@ from pydantic import BaseModel, Field
 from typing import Optional
 from src.common.logger import get_logger
 from .token_manager import get_token_manager
+from .config_routes import router as config_router
+from .statistics_routes import router as statistics_router
+from .person_routes import router as person_router
+from .expression_routes import router as expression_router
+from .emoji_routes import router as emoji_router
+from .plugin_routes import router as plugin_router
+from .plugin_progress_ws import get_progress_router
 
 logger = get_logger("webui.api")
 
 # 创建路由器
 router = APIRouter(prefix="/api/webui", tags=["WebUI"])
+
+# 注册配置管理路由
+router.include_router(config_router)
+# 注册统计数据路由
+router.include_router(statistics_router)
+# 注册人物信息管理路由
+router.include_router(person_router)
+# 注册表达方式管理路由
+router.include_router(expression_router)
+# 注册表情包管理路由
+router.include_router(emoji_router)
+# 注册插件管理路由
+router.include_router(plugin_router)
+# 注册插件进度 WebSocket 路由
+router.include_router(get_progress_router())
 
 
 class TokenVerifyRequest(BaseModel):

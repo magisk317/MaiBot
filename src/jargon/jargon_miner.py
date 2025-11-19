@@ -23,6 +23,29 @@ from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 logger = get_logger("jargon")
 
 
+def _contains_bot_self_name(content: str) -> bool:
+    """
+    判断词条是否包含机器人的昵称或别名
+    """
+    if not content:
+        return False
+
+    bot_config = getattr(global_config, "bot", None)
+    if not bot_config:
+        return False
+
+    target = content.strip().lower()
+    nickname = str(getattr(bot_config, "nickname", "") or "").strip().lower()
+    alias_names = [
+        str(alias or "").strip().lower()
+        for alias in getattr(bot_config, "alias_names", []) or []
+    ]
+
+    candidates = [name for name in [nickname, *alias_names] if name]
+
+    return any(name in target for name in candidates if target)
+
+
 def _init_prompt() -> None:
     prompt_str = """
 **聊天内容，其中的SELF是你自己的发言**
@@ -251,7 +274,7 @@ class JargonMiner:
         self.chat_id = chat_id
         self.last_learning_time: float = time.time()
         # 频率控制，可按需调整
-        self.min_messages_for_learning: int = 15
+        self.min_messages_for_learning: int = 10
         self.min_learning_interval: float = 20  
 
         self.llm = LLMRequest(
@@ -434,7 +457,7 @@ class JargonMiner:
                 jargon_obj.is_complete = True
             
             jargon_obj.save()
-            logger.info(f"jargon {content} 推断完成: is_jargon={is_jargon}, meaning={jargon_obj.meaning}, last_inference_count={jargon_obj.last_inference_count}, is_complete={jargon_obj.is_complete}")
+            logger.debug(f"jargon {content} 推断完成: is_jargon={is_jargon}, meaning={jargon_obj.meaning}, last_inference_count={jargon_obj.last_inference_count}, is_complete={jargon_obj.is_complete}")
             
             # 固定输出推断结果，格式化为可读形式
             if is_jargon:
@@ -442,7 +465,7 @@ class JargonMiner:
                 meaning = jargon_obj.meaning or "无详细说明"
                 is_global = jargon_obj.is_global
                 if is_global:
-                    logger.info(f"[通用黑话]{content}的含义是 {meaning}")
+                    logger.info(f"[黑话]{content}的含义是 {meaning}")
                 else:
                     logger.info(f"[{self.stream_name}]{content}的含义是 {meaning}")
             else:
@@ -545,6 +568,9 @@ class JargonMiner:
                             raw_content_list = [raw_content_str]
                     
                     if content and raw_content_list:
+                        if _contains_bot_self_name(content):
+                            logger.debug(f"解析阶段跳过包含机器人昵称/别名的词条: {content}")
+                            continue
                         entries.append({
                             "content": content,
                             "raw_content": raw_content_list
