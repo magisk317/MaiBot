@@ -29,12 +29,17 @@ spec:
               value: 99f08e0cab0190de853cb6af7d64d4de
             - name: PRIVACY_AGREE
               value: 9943b855e72199d0f5016ea39052f1b6
-          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.3-beta" }}
+          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.5-beta" }}
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
           ports:
             - containerPort: 8000
               name: adapter-ws
               protocol: TCP
+            {{- if .Values.core.webui.enabled }}
+            - containerPort: 8001
+              name: webui
+              protocol: TCP
+            {{- end }}
           {{- if .Values.core.resources }}
           resources:
             {{ toYaml .Values.core.resources | nindent 12 }}
@@ -69,7 +74,7 @@ spec:
           command:
             - python3
           workingDir: /MaiMBot
-          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.3-beta" }}
+          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.5-beta" }}
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
           name: setup-plugins
           resources: { }

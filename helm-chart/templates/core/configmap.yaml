@@ -7,6 +7,10 @@ data:
   .env: |
     HOST=0.0.0.0
     PORT=8000
+    WEBUI_ENABLED={{ if .Values.core.webui.enabled }}true{{ else }}false{{ end }}
+    WEBUI_MODE=production
+    WEBUI_HOST=0.0.0.0
+    WEBUI_PORT=8001
   model_config.toml: |
     {{ .Values.config.core_model_config | nindent 4 }}
   bot_config.toml: |
