@@ -56,16 +56,16 @@ spec:
               readOnly: true
               subPath: k8s-init.sh
             - mountPath: /MaiMBot/.env
-              name: config
+              name: env-config
               readOnly: true
               subPath: .env
             {{- if not .Values.core.webui.enabled }}
             - mountPath: /MaiMBot/config/model_config.toml
-              name: config
+              name: model-config
               readOnly: true
               subPath: model_config.toml
             - mountPath: /MaiMBot/config/bot_config.toml
-              name: config
+              name: bot-config
               readOnly: true
               subPath: bot_config.toml
             {{- end }}
@@ -140,12 +140,20 @@ spec:
             items:
               - key: .env
                 path: .env
+            name: {{ .Release.Name }}-maibot-core-env-config
+          name: env-config
+        - configMap:
+            items:
               - key: model_config.toml
                 path: model_config.toml
+            name: {{ .Release.Name }}-maibot-core-model-config
+          name: model-config
+        - configMap:
+            items:
               - key: bot_config.toml
                 path: bot_config.toml
-            name: {{ .Release.Name }}-maibot-core
-          name: config
+            name: {{ .Release.Name }}-maibot-core-bot-config
+          name: bot-config
         {{- if .Values.statistics_dashboard.enabled }}
         - name: statistics
           persistentVolumeClaim:

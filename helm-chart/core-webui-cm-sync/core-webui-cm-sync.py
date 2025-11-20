@@ -19,22 +19,23 @@ core_api = client.CoreV1Api()
 with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", "r") as f:
     namespace = f.read().strip()
 release_name = os.getenv("RELEASE_NAME")
-configmap_name = f'{release_name}-maibot-core'
+model_configmap_name = f'{release_name}-maibot-core-model-config'
+bot_configmap_name = f'{release_name}-maibot-core-bot-config'
 
 # 过滤列表，只监控指定文件
 target_files = {
-    os.path.abspath("model_config.toml"): "model_config.toml",
-    os.path.abspath("bot_config.toml"): "bot_config.toml"
+    os.path.abspath("model_config.toml"): (model_configmap_name, "model_config.toml"),
+    os.path.abspath("bot_config.toml"): (bot_configmap_name, "bot_config.toml")
 }
 
 
-def get_configmap():
+def get_configmap(configmap_name: str):
     """获取core的ConfigMap内容"""
     cm = core_api.read_namespaced_config_map(name=configmap_name, namespace=namespace)
     return cm.data
 
 
-def set_configmap(configmap_data: dict[str, str]):
+def set_configmap(configmap_name: str, configmap_data: dict[str, str]):
     """设置core的ConfigMap内容"""
     core_api.patch_namespaced_config_map(configmap_name, namespace, {'data': configmap_data})
 
@@ -47,11 +48,12 @@ class ConfigObserverHandler(FileSystemEventHandler):
                   f'Start to sync...')
             with open(event.src_path, "r", encoding="utf-8") as _f:
                 current_data = _f.read()
+            _path = str(os.path.abspath(event.src_path))
             new_cm = {
-                target_files[os.path.abspath("model_config.toml")]: current_data
+                target_files[_path][1]: current_data
             }
             try:
-                set_configmap(new_cm)
+                set_configmap(target_files[_path][0], new_cm)
                 print(f'\tSync done.')
             except client.exceptions.ApiException as _e:
                 print(f'\tError while setting configmap:\n'
@@ -63,8 +65,8 @@ if __name__ == '__main__':
     # 初始化配置文件
     print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] Initializing config files...')
     try:
-        __initial_model_config = get_configmap()['model_config.toml']
-        __initial_bot_config = get_configmap()['bot_config.toml']
+        __initial_model_config = get_configmap(model_configmap_name)['model_config.toml']
+        __initial_bot_config = get_configmap(bot_configmap_name)['bot_config.toml']
     except client.exceptions.ApiException as e:
         print(f'\tError while getting configmap:\n'
               f'\t\tStatus Code: {e.status}\n'
