@@ -1,4 +1,4 @@
-{{- if or .Release.IsInstall .Values.config.enable_config_override }}
+{{- if or .Release.IsInstall (and .Values.core.webui.enabled .Values.config.enable_config_override_with_webui) (and (not .Values.core.webui.enabled) .Values.config.enable_config_override_without_webui) }}
 # 渲染规则：
 # 初次安装，或配置了覆盖规则
 apiVersion: v1

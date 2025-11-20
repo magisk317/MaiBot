@@ -14,9 +14,9 @@ build-adapter-cm-generator:
   image: reg.mikumikumi.xyz/base/kaniko-builder:latest
   variables:
     BUILD_NO_CACHE: true
-#  rules:
-#    - changes:
-#        - helm-chart/adapter-cm-generator/**
+  rules:
+    - changes:
+        - helm-chart/adapter-cm-generator/**
   script:
     - export BUILD_CONTEXT=helm-chart/adapter-cm-generator
     - export TMP_DST=reg.mikumikumi.xyz/maibot/adapter-cm-generator
@@ -31,9 +31,9 @@ build-core-webui-cm-sync:
   image: reg.mikumikumi.xyz/base/kaniko-builder:latest
   variables:
     BUILD_NO_CACHE: true
-#  rules:
-#    - changes:
-#        - helm-chart/core-webui-cm-sync/**
+  rules:
+    - changes:
+        - helm-chart/core-webui-cm-sync/**
   script:
     - export BUILD_CONTEXT=helm-chart/core-webui-cm-sync
     - export TMP_DST=reg.mikumikumi.xyz/maibot/core-webui-cm-sync
@@ -46,15 +46,15 @@ build-core-webui-cm-sync:
 package-helm-chart:
   stage: package-helm-chart
   image: reg.mikumikumi.xyz/mirror/helm:latest
-#  rules:
-#    - changes:
-#        - helm-chart/files/**
-#        - helm-chart/templates/**
-#        - helm-chart/.gitignore
-#        - helm-chart/.helmignore
-#        - helm-chart/Chart.yaml
-#        - helm-chart/README.md
-#        - helm-chart/values.yaml
+  rules:
+    - changes:
+        - helm-chart/files/**
+        - helm-chart/templates/**
+        - helm-chart/.gitignore
+        - helm-chart/.helmignore
+        - helm-chart/Chart.yaml
+        - helm-chart/README.md
+        - helm-chart/values.yaml
   script:
     - export CHART_VERSION=$(cat helm-chart/Chart.yaml | grep '^version:' | cut -d' ' -f2)
     - helm registry login reg.mikumikumi.xyz --username ${CI_REGISTRY_USER} --password ${CI_REGISTRY_PASSWORD}

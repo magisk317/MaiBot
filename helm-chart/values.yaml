@@ -212,9 +212,11 @@ sqlite_web:
 config:
 
   # 启用WebUI后，配置文件的修改即可在WebUI进行。如果通过WebUI修改了配置，则实际的配置文件将与values中的配置存在差异。
-  # 为了避免helm升级麦麦时，下面values中的配置覆盖掉已有的配置文件而导致配置丢失，可以在这里禁止本次部署时的配置覆盖。
+  # 如果用户在k8s的ConfigMap中手动修改了配置文件，则实际的配置文件也会与values中的配置存在差异。
+  # 出现上述两种情况时，为了避免helm升级麦麦时，下面values中的配置覆盖掉已有的配置文件而导致配置丢失，可以在这里禁止本次部署时的配置覆盖。
   # 注：由于adapter的配置无法通过WebUI修改，因此下面的adapter_config配置仍然会覆盖已有配置文件。
-  enable_config_override: true  # 要禁止覆盖，修改为false
+  enable_config_override_without_webui: true  # 未启用WebUI时，默认覆盖
+  enable_config_override_with_webui: false  # 启用WebUI时，默认不覆盖
 
   # adapter的config.toml
   adapter_config: |
