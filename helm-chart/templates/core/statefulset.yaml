@@ -142,6 +142,7 @@ spec:
                 path: .env
             name: {{ .Release.Name }}-maibot-core-env-config
           name: env-config
+        {{- if not .Values.core.webui.enabled }}
         - configMap:
             items:
               - key: model_config.toml
@@ -154,6 +155,7 @@ spec:
                 path: bot_config.toml
             name: {{ .Release.Name }}-maibot-core-bot-config
           name: bot-config
+        {{- end }}
         {{- if .Values.statistics_dashboard.enabled }}
         - name: statistics
           persistentVolumeClaim:
