@@ -66,6 +66,9 @@ core:
   setup_default_plugins: true  # 启用一个初始化容器，用于为用户自动安装默认插件到存储卷中
 
   webui:  # WebUI相关配置
+    # 对从helm chart 0.11.5-beta 之前的旧版升级的用户的重要提示：
+    # 旧版本helm chart没有配置configmap的保留策略，直接升级同时开启WebUI后会导致configmap丢失从而无法启动。
+    # 这种情况可以先禁用WebUI更新一次，再启用WebUI更新一次即可解决问题。
     enabled: true  # 默认启用
     cm_sync:  # WebUI的辅助容器配置
       image:
