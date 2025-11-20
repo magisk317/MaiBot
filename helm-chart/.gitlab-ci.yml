@@ -12,6 +12,8 @@ workflow:
 build-adapter-cm-generator:
   stage: build-image
   image: reg.mikumikumi.xyz/base/kaniko-builder:latest
+  variables:
+    BUILD_NO_CACHE: true
 #  rules:
 #    - changes:
 #        - helm-chart/adapter-cm-generator/**
@@ -27,6 +29,8 @@ build-adapter-cm-generator:
 build-core-webui-cm-sync:
   stage: build-image
   image: reg.mikumikumi.xyz/base/kaniko-builder:latest
+  variables:
+    BUILD_NO_CACHE: true
 #  rules:
 #    - changes:
 #        - helm-chart/core-webui-cm-sync/**

@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     # 持续检测变化并同步
     observer = Observer()
-    observer.schedule(ConfigObserverHandler(), '', recursive=False)
+    observer.schedule(ConfigObserverHandler(), work_dir, recursive=False)
     observer.start()
     try:
         while True:
