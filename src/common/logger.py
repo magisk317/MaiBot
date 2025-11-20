@@ -72,16 +72,16 @@ def get_ws_handler():
 
 def initialize_ws_handler(loop):
     """初始化 WebSocket handler 的事件循环
-    
+
     Args:
         loop: asyncio 事件循环
     """
     handler = get_ws_handler()
     handler.set_loop(loop)
-    
+
     # 为 WebSocket handler 设置 JSON 格式化器（与文件格式相同）
     handler.setFormatter(file_formatter)
-    
+
     # 添加到根日志记录器
     root_logger = logging.getLogger()
     if handler not in root_logger.handlers:
@@ -177,43 +177,44 @@ class TimestampedFileHandler(logging.Handler):
 
 class WebSocketLogHandler(logging.Handler):
     """WebSocket 日志处理器 - 将日志实时推送到前端"""
-    
+
     _log_counter = 0  # 类级别计数器,确保 ID 唯一性
-    
+
     def __init__(self, loop=None):
         super().__init__()
         self.loop = loop
         self._initialized = False
-    
+
     def set_loop(self, loop):
         """设置事件循环"""
         self.loop = loop
         self._initialized = True
-    
+
     def emit(self, record):
         """发送日志到 WebSocket 客户端"""
         if not self._initialized or self.loop is None:
             return
-        
+
         try:
             # 获取格式化后的消息
             # 对于 structlog,formatted message 包含完整的日志信息
             formatted_msg = self.format(record) if self.formatter else record.getMessage()
-            
+
             # 如果是 JSON 格式(文件格式化器),解析它
             message = formatted_msg
             try:
                 import json
+
                 log_dict = json.loads(formatted_msg)
-                message = log_dict.get('event', formatted_msg)
+                message = log_dict.get("event", formatted_msg)
             except (json.JSONDecodeError, ValueError):
                 # 不是 JSON,直接使用消息
                 message = formatted_msg
-            
+
             # 生成唯一 ID: 时间戳毫秒 + 自增计数器
             WebSocketLogHandler._log_counter += 1
             log_id = f"{int(record.created * 1000)}_{WebSocketLogHandler._log_counter}"
-            
+
             # 格式化日志数据
             log_data = {
                 "id": log_id,
@@ -222,20 +223,17 @@ class WebSocketLogHandler(logging.Handler):
                 "module": record.name,
                 "message": message,
             }
-            
+
             # 异步广播日志(不阻塞日志记录)
             try:
                 import asyncio
                 from src.webui.logs_ws import broadcast_log
-                
-                asyncio.run_coroutine_threadsafe(
-                    broadcast_log(log_data),
-                    self.loop
-                )
+
+                asyncio.run_coroutine_threadsafe(broadcast_log(log_data), self.loop)
             except Exception:
                 # WebSocket 推送失败不影响日志记录
                 pass
-                
+
         except Exception:
             # 不要让 WebSocket 错误影响日志系统
             self.handleError(record)
@@ -255,7 +253,7 @@ def close_handlers():
     if _console_handler:
         _console_handler.close()
         _console_handler = None
-    
+
     if _ws_handler:
         _ws_handler.close()
         _ws_handler = None

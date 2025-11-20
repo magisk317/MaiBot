@@ -16,27 +16,24 @@ from src.llm_models.payload_content.message import MessageBuilder, RoleType, Mes
 
 logger = get_logger("memory_retrieval")
 
-THINKING_BACK_NOT_FOUND_RETENTION_SECONDS = 3600  # 未找到答案记录保留时长
-THINKING_BACK_CLEANUP_INTERVAL_SECONDS = 300      # 清理频率
+THINKING_BACK_NOT_FOUND_RETENTION_SECONDS = 36000  # 未找到答案记录保留时长
+THINKING_BACK_CLEANUP_INTERVAL_SECONDS = 3000  # 清理频率
 _last_not_found_cleanup_ts: float = 0.0
 
 
 def _cleanup_stale_not_found_thinking_back() -> None:
     """定期清理过期的未找到答案记录"""
     global _last_not_found_cleanup_ts
-    
+
     now = time.time()
     if now - _last_not_found_cleanup_ts < THINKING_BACK_CLEANUP_INTERVAL_SECONDS:
         return
-    
+
     threshold_time = now - THINKING_BACK_NOT_FOUND_RETENTION_SECONDS
     try:
         deleted_rows = (
             ThinkingBack.delete()
-            .where(
-                (ThinkingBack.found_answer == 0) &
-                (ThinkingBack.update_time < threshold_time)
-            )
+            .where((ThinkingBack.found_answer == 0) & (ThinkingBack.update_time < threshold_time))
             .execute()
         )
         if deleted_rows:
@@ -45,11 +42,12 @@ def _cleanup_stale_not_found_thinking_back() -> None:
     except Exception as e:
         logger.error(f"清理未找到答案的thinking_back记录失败: {e}")
 
+
 def init_memory_retrieval_prompt():
     """初始化记忆检索相关的 prompt 模板和工具"""
     # 首先注册所有工具
     init_all_tools()
-    
+
     # 第一步：问题生成prompt
     Prompt(
         """
@@ -102,7 +100,7 @@ def init_memory_retrieval_prompt():
 """,
         name="memory_retrieval_question_prompt",
     )
-    
+
     # 第二步：ReAct Agent prompt（使用function calling，要求先思考再行动）
     Prompt(
         """你的名字是{bot_name}。现在是{time_now}。
@@ -140,7 +138,7 @@ def init_memory_retrieval_prompt():
 """,
         name="memory_retrieval_react_prompt_head",
     )
-    
+
     # 额外，如果最后一轮迭代：ReAct Agent prompt（使用function calling，要求先思考再行动）
     Prompt(
         """你的名字是{bot_name}。现在是{time_now}。
@@ -170,10 +168,10 @@ def init_memory_retrieval_prompt():
 
 def _parse_react_response(response: str) -> Optional[Dict[str, Any]]:
     """解析ReAct Agent的响应
-    
+
     Args:
         response: LLM返回的响应
-        
+
     Returns:
         Dict[str, Any]: 解析后的动作信息，如果解析失败返回None
         格式: {"thought": str, "actions": List[Dict[str, Any]]}
@@ -183,90 +181,75 @@ def _parse_react_response(response: str) -> Optional[Dict[str, Any]]:
         # 尝试提取JSON（可能包含在```json代码块中）
         json_pattern = r"```json\s*(.*?)\s*```"
         matches = re.findall(json_pattern, response, re.DOTALL)
-        
+
         if matches:
             json_str = matches[0]
         else:
             # 尝试直接解析整个响应
             json_str = response.strip()
-        
+
         # 修复可能的JSON错误
         repaired_json = repair_json(json_str)
-        
+
         # 解析JSON
         action_info = json.loads(repaired_json)
-        
+
         if not isinstance(action_info, dict):
             logger.warning(f"解析的JSON不是对象格式: {action_info}")
             return None
-        
+
         # 确保actions字段存在且为列表
         if "actions" not in action_info:
             logger.warning(f"响应中缺少actions字段: {action_info}")
             return None
-        
+
         if not isinstance(action_info["actions"], list):
             logger.warning(f"actions字段不是数组格式: {action_info['actions']}")
             return None
-        
+
         # 确保actions不为空
         if len(action_info["actions"]) == 0:
             logger.warning("actions数组为空")
             return None
-        
+
         return action_info
-        
+
     except Exception as e:
         logger.error(f"解析ReAct响应失败: {e}, 响应内容: {response[:200]}...")
         return None
 
 
-async def _retrieve_concepts_with_jargon(
-    concepts: List[str],
-    chat_id: str
-) -> str:
+async def _retrieve_concepts_with_jargon(concepts: List[str], chat_id: str) -> str:
     """对概念列表进行jargon检索
-    
+
     Args:
         concepts: 概念列表
         chat_id: 聊天ID
-        
+
     Returns:
         str: 检索结果字符串
     """
     if not concepts:
         return ""
-    
+
     from src.jargon.jargon_miner import search_jargon
-    
+
     results = []
     for concept in concepts:
         concept = concept.strip()
         if not concept:
             continue
-        
+
         # 先尝试精确匹配
-        jargon_results = search_jargon(
-            keyword=concept,
-            chat_id=chat_id,
-            limit=10,
-            case_sensitive=False,
-            fuzzy=False
-        )
-        
+        jargon_results = search_jargon(keyword=concept, chat_id=chat_id, limit=10, case_sensitive=False, fuzzy=False)
+
         is_fuzzy_match = False
-        
+
         # 如果精确匹配未找到，尝试模糊搜索
         if not jargon_results:
-            jargon_results = search_jargon(
-                keyword=concept,
-                chat_id=chat_id,
-                limit=10,
-                case_sensitive=False,
-                fuzzy=True
-            )
+            jargon_results = search_jargon(keyword=concept, chat_id=chat_id, limit=10, case_sensitive=False, fuzzy=True)
             is_fuzzy_match = True
-        
+
         if jargon_results:
             # 找到结果
             if is_fuzzy_match:
@@ -291,28 +274,24 @@ async def _retrieve_concepts_with_jargon(
         else:
             # 未找到，不返回占位信息，只记录日志
             logger.info(f"在jargon库中未找到匹配: {concept}")
-    
+
     if results:
         return "【概念检索结果】\n" + "\n".join(results) + "\n"
     return ""
 
 
 async def _react_agent_solve_question(
-    question: str,
-    chat_id: str,
-    max_iterations: int = 5,
-    timeout: float = 30.0,
-    initial_info: str = ""
+    question: str, chat_id: str, max_iterations: int = 5, timeout: float = 30.0, initial_info: str = ""
 ) -> Tuple[bool, str, List[Dict[str, Any]], bool]:
     """使用ReAct架构的Agent来解决问题
-    
+
     Args:
         question: 要回答的问题
         chat_id: 聊天ID
         max_iterations: 最大迭代次数
         timeout: 超时时间（秒）
         initial_info: 初始信息（如概念检索结果），将作为collected_info的初始值
-        
+
     Returns:
         Tuple[bool, str, List[Dict[str, Any]], bool]: (是否找到答案, 答案内容, 思考步骤列表, 是否超时)
     """
@@ -321,34 +300,35 @@ async def _react_agent_solve_question(
     thinking_steps = []
     is_timeout = False
     conversation_messages: List[Message] = []
-    
+
     for iteration in range(max_iterations):
         # 检查超时
         if time.time() - start_time > timeout:
             logger.warning(f"ReAct Agent超时，已迭代{iteration}次")
             is_timeout = True
             break
-        
+
         # 获取工具注册器
         tool_registry = get_tool_registry()
-        
+
         # 获取bot_name
         bot_name = global_config.bot.nickname
-        
+
         # 获取当前时间
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        
+
         # 计算剩余迭代次数
         current_iteration = iteration + 1
         remaining_iterations = max_iterations - current_iteration
         is_final_iteration = current_iteration >= max_iterations
-        
-        
+
         if is_final_iteration:
             # 最后一次迭代，使用最终prompt
             tool_definitions = []
-            logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代，问题: {question}|可用工具数量: 0（最后一次迭代，不提供工具调用）")
-            
+            logger.info(
+                f"ReAct Agent 第 {iteration + 1} 次迭代，问题: {question}|可用工具数量: 0（最后一次迭代，不提供工具调用）"
+            )
+
             prompt = await global_prompt_manager.format_prompt(
                 "memory_retrieval_react_final_prompt",
                 bot_name=bot_name,
@@ -359,8 +339,9 @@ async def _react_agent_solve_question(
                 remaining_iterations=remaining_iterations,
                 max_iterations=max_iterations,
             )
-            
-            logger.info(f"ReAct Agent 第 {iteration + 1} 次Prompt: {prompt}")
+
+            if global_config.debug.show_memory_prompt:
+                logger.info(f"ReAct Agent 第 {iteration + 1} 次Prompt: {prompt}")
             success, response, reasoning_content, model_name, tool_calls = await llm_api.generate_with_model_with_tools(
                 prompt,
                 model_config=model_config.model_task_config.tool_use,
@@ -370,7 +351,9 @@ async def _react_agent_solve_question(
         else:
             # 非最终迭代，使用head_prompt
             tool_definitions = tool_registry.get_tool_definitions()
-            logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代，问题: {question}|可用工具数量: {len(tool_definitions)}")
+            logger.info(
+                f"ReAct Agent 第 {iteration + 1} 次迭代，问题: {question}|可用工具数量: {len(tool_definitions)}"
+            )
 
             head_prompt = await global_prompt_manager.format_prompt(
                 "memory_retrieval_react_prompt_head",
@@ -397,55 +380,64 @@ async def _react_agent_solve_question(
                 messages.append(system_builder.build())
 
                 messages.extend(_conversation_messages)
-                
-                # 优化日志展示 - 合并所有消息到一条日志
-                log_lines = []
-                for idx, msg in enumerate(messages, 1):
-                    role_name = msg.role.value if hasattr(msg.role, 'value') else str(msg.role)
-                    
-                    # 处理内容 - 显示完整内容，不截断
-                    if isinstance(msg.content, str):
-                        full_content = msg.content
-                        content_type = "文本"
-                    elif isinstance(msg.content, list):
-                        text_parts = [item for item in msg.content if isinstance(item, str)]
-                        image_count = len([item for item in msg.content if isinstance(item, tuple)])
-                        full_content = "".join(text_parts) if text_parts else ""
-                        content_type = f"混合({len(text_parts)}段文本, {image_count}张图片)"
-                    else:
-                        full_content = str(msg.content)
-                        content_type = "未知"
-                    
-                    # 构建单条消息的日志信息
-                    msg_info = f"\n[消息 {idx}] 角色: {role_name} 内容类型: {content_type}\n========================================"
-                    
-                    if full_content:
-                        msg_info += f"\n{full_content}"
-                    
-                    if msg.tool_calls:
-                        msg_info += f"\n  工具调用: {len(msg.tool_calls)}个"
-                        for tool_call in msg.tool_calls:
-                            msg_info += f"\n    - {tool_call}"
-                    
-                    if msg.tool_call_id:
-                        msg_info += f"\n  工具调用ID: {msg.tool_call_id}"
-                    
-                    log_lines.append(msg_info)
-                
-                # 合并所有消息为一条日志输出
-                logger.info(f"消息列表 (共{len(messages)}条):{''.join(log_lines)}")
+
+                if global_config.debug.show_memory_prompt:
+                    # 优化日志展示 - 合并所有消息到一条日志
+                    log_lines = []
+                    for idx, msg in enumerate(messages, 1):
+                        role_name = msg.role.value if hasattr(msg.role, "value") else str(msg.role)
+
+                        # 处理内容 - 显示完整内容，不截断
+                        if isinstance(msg.content, str):
+                            full_content = msg.content
+                            content_type = "文本"
+                        elif isinstance(msg.content, list):
+                            text_parts = [item for item in msg.content if isinstance(item, str)]
+                            image_count = len([item for item in msg.content if isinstance(item, tuple)])
+                            full_content = "".join(text_parts) if text_parts else ""
+                            content_type = f"混合({len(text_parts)}段文本, {image_count}张图片)"
+                        else:
+                            full_content = str(msg.content)
+                            content_type = "未知"
+
+                        # 构建单条消息的日志信息
+                        msg_info = f"\n[消息 {idx}] 角色: {role_name} 内容类型: {content_type}\n========================================"
+
+                        if full_content:
+                            msg_info += f"\n{full_content}"
+
+                        if msg.tool_calls:
+                            msg_info += f"\n  工具调用: {len(msg.tool_calls)}个"
+                            for tool_call in msg.tool_calls:
+                                msg_info += f"\n    - {tool_call}"
+
+                        if msg.tool_call_id:
+                            msg_info += f"\n  工具调用ID: {msg.tool_call_id}"
+
+                        log_lines.append(msg_info)
+
+                    # 合并所有消息为一条日志输出
+                    logger.info(f"消息列表 (共{len(messages)}条):{''.join(log_lines)}")
 
                 return messages
 
-            success, response, reasoning_content, model_name, tool_calls = await llm_api.generate_with_model_with_tools_by_message_factory(
+            (
+                success,
+                response,
+                reasoning_content,
+                model_name,
+                tool_calls,
+            ) = await llm_api.generate_with_model_with_tools_by_message_factory(
                 message_factory,
                 model_config=model_config.model_task_config.tool_use,
                 tool_options=tool_definitions,
                 request_type="memory.react",
             )
-        
-        logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 模型: {model_name} ，调用工具数量: {len(tool_calls) if tool_calls else 0} ，调用工具响应: {response}")
-        
+
+        logger.info(
+            f"ReAct Agent 第 {iteration + 1} 次迭代 模型: {model_name} ，调用工具数量: {len(tool_calls) if tool_calls else 0} ，调用工具响应: {response}"
+        )
+
         if not success:
             logger.error(f"ReAct Agent LLM调用失败: {response}")
             break
@@ -463,105 +455,108 @@ async def _react_agent_solve_question(
             assistant_builder.set_role(RoleType.Assistant)
             assistant_builder.add_text_content(response)
             assistant_message = assistant_builder.build()
-        
+
         # 记录思考步骤
-        step = {
-            "iteration": iteration + 1,
-            "thought": response,
-            "actions": [],
-            "observations": []
-        }
-        
+        step = {"iteration": iteration + 1, "thought": response, "actions": [], "observations": []}
+
         # 优先从思考内容中提取found_answer或not_enough_info
         def extract_quoted_content(text, func_name, param_name):
             """从文本中提取函数调用中参数的值，支持单引号和双引号
-            
+
             Args:
                 text: 要搜索的文本
                 func_name: 函数名，如 'found_answer'
                 param_name: 参数名，如 'answer'
-            
+
             Returns:
                 提取的参数值，如果未找到则返回None
             """
             if not text:
                 return None
-            
+
             # 查找函数调用位置（不区分大小写）
             func_pattern = func_name.lower()
             text_lower = text.lower()
             func_pos = text_lower.find(func_pattern)
             if func_pos == -1:
                 return None
-            
+
             # 查找参数名和等号
-            param_pattern = f'{param_name}='
+            param_pattern = f"{param_name}="
             param_pos = text_lower.find(param_pattern, func_pos)
             if param_pos == -1:
                 return None
-            
+
             # 跳过参数名、等号和空白
             start_pos = param_pos + len(param_pattern)
-            while start_pos < len(text) and text[start_pos] in ' \t\n':
+            while start_pos < len(text) and text[start_pos] in " \t\n":
                 start_pos += 1
-            
+
             if start_pos >= len(text):
                 return None
-            
+
             # 确定引号类型
             quote_char = text[start_pos]
             if quote_char not in ['"', "'"]:
                 return None
-            
+
             # 查找匹配的结束引号（考虑转义）
             end_pos = start_pos + 1
             while end_pos < len(text):
                 if text[end_pos] == quote_char:
                     # 检查是否是转义的引号
-                    if end_pos > start_pos + 1 and text[end_pos - 1] == '\\':
+                    if end_pos > start_pos + 1 and text[end_pos - 1] == "\\":
                         end_pos += 1
                         continue
                     # 找到匹配的引号
-                    content = text[start_pos + 1:end_pos]
+                    content = text[start_pos + 1 : end_pos]
                     # 处理转义字符
-                    content = content.replace('\\"', '"').replace("\\'", "'").replace('\\\\', '\\')
+                    content = content.replace('\\"', '"').replace("\\'", "'").replace("\\\\", "\\")
                     return content
                 end_pos += 1
-            
+
             return None
-        
+
         # 从LLM的直接输出内容中提取found_answer或not_enough_info
         found_answer_content = None
         not_enough_info_reason = None
-        
+
         # 只检查response（LLM的直接输出内容），不检查reasoning_content
         if response:
-            found_answer_content = extract_quoted_content(response, 'found_answer', 'answer')
+            found_answer_content = extract_quoted_content(response, "found_answer", "answer")
             if not found_answer_content:
-                not_enough_info_reason = extract_quoted_content(response, 'not_enough_info', 'reason')
-        
+                not_enough_info_reason = extract_quoted_content(response, "not_enough_info", "reason")
+
         # 如果从输出内容中找到了答案，直接返回
         if found_answer_content:
             step["actions"].append({"action_type": "found_answer", "action_params": {"answer": found_answer_content}})
             step["observations"] = ["从LLM输出内容中检测到found_answer"]
             thinking_steps.append(step)
-            logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 从LLM输出内容中检测到found_answer: {found_answer_content[:100]}...")
+            logger.info(
+                f"ReAct Agent 第 {iteration + 1} 次迭代 从LLM输出内容中检测到found_answer: {found_answer_content[:100]}..."
+            )
             return True, found_answer_content, thinking_steps, False
-        
+
         if not_enough_info_reason:
-            step["actions"].append({"action_type": "not_enough_info", "action_params": {"reason": not_enough_info_reason}})
+            step["actions"].append(
+                {"action_type": "not_enough_info", "action_params": {"reason": not_enough_info_reason}}
+            )
             step["observations"] = ["从LLM输出内容中检测到not_enough_info"]
             thinking_steps.append(step)
-            logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 从LLM输出内容中检测到not_enough_info: {not_enough_info_reason[:100]}...")
+            logger.info(
+                f"ReAct Agent 第 {iteration + 1} 次迭代 从LLM输出内容中检测到not_enough_info: {not_enough_info_reason[:100]}..."
+            )
             return False, not_enough_info_reason, thinking_steps, False
-        
+
         if is_final_iteration:
-            step["actions"].append({"action_type": "not_enough_info", "action_params": {"reason": "已到达最后一次迭代，无法找到答案"}})
+            step["actions"].append(
+                {"action_type": "not_enough_info", "action_params": {"reason": "已到达最后一次迭代，无法找到答案"}}
+            )
             step["observations"] = ["已到达最后一次迭代，无法找到答案"]
             thinking_steps.append(step)
             logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 已到达最后一次迭代，无法找到答案")
             return False, "已到达最后一次迭代，无法找到答案", thinking_steps, False
-        
+
         if assistant_message:
             conversation_messages.append(assistant_message)
 
@@ -570,7 +565,7 @@ async def _react_agent_solve_question(
             thought_summary = reasoning_content or (response[:200] if response else "")
             if thought_summary:
                 collected_info += f"\n[思考] {thought_summary}\n"
-        
+
         # 处理工具调用
         if not tool_calls:
             # 没有工具调用，说明LLM在思考中已经给出了答案（已在前面检查），或者需要继续查询
@@ -588,28 +583,31 @@ async def _react_agent_solve_question(
                 step["observations"] = ["无响应且无工具调用"]
                 thinking_steps.append(step)
                 break
-        
+
         # 处理工具调用
         tool_tasks = []
-        
+
         for i, tool_call in enumerate(tool_calls):
             tool_name = tool_call.func_name
             tool_args = tool_call.args or {}
-            
-            logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 工具调用 {i+1}/{len(tool_calls)}: {tool_name}({tool_args})")
-            
+
+            logger.info(
+                f"ReAct Agent 第 {iteration + 1} 次迭代 工具调用 {i + 1}/{len(tool_calls)}: {tool_name}({tool_args})"
+            )
+
             # 普通工具调用
             tool = tool_registry.get_tool(tool_name)
             if tool:
                 # 准备工具参数（需要添加chat_id如果工具需要）
                 tool_params = tool_args.copy()
-                
+
                 # 如果工具函数签名需要chat_id，添加它
                 import inspect
+
                 sig = inspect.signature(tool.execute_func)
                 if "chat_id" in sig.parameters:
                     tool_params["chat_id"] = chat_id
-                
+
                 # 创建异步任务
                 async def execute_single_tool(tool_instance, params, tool_name_str, iter_num):
                     try:
@@ -620,23 +618,23 @@ async def _react_agent_solve_question(
                         error_msg = f"工具执行失败: {str(e)}"
                         logger.error(f"ReAct Agent 第 {iter_num + 1} 次迭代 工具 {tool_name_str} {error_msg}")
                         return f"查询{tool_name_str}失败: {error_msg}"
-                
+
                 tool_tasks.append(execute_single_tool(tool, tool_params, tool_name, iteration))
                 step["actions"].append({"action_type": tool_name, "action_params": tool_args})
             else:
                 error_msg = f"未知的工具类型: {tool_name}"
-                logger.warning(f"ReAct Agent 第 {iteration + 1} 次迭代 工具 {i+1}/{len(tool_calls)} {error_msg}")
+                logger.warning(f"ReAct Agent 第 {iteration + 1} 次迭代 工具 {i + 1}/{len(tool_calls)} {error_msg}")
                 tool_tasks.append(asyncio.create_task(asyncio.sleep(0, result=f"查询{tool_name}失败: {error_msg}")))
-        
+
         # 并行执行所有工具
         if tool_tasks:
             observations = await asyncio.gather(*tool_tasks, return_exceptions=True)
-            
+
             # 处理执行结果
             for i, (tool_call_item, observation) in enumerate(zip(tool_calls, observations, strict=False)):
                 if isinstance(observation, Exception):
                     observation = f"工具执行异常: {str(observation)}"
-                    logger.error(f"ReAct Agent 第 {iteration + 1} 次迭代 工具 {i+1} 执行异常: {observation}")
+                    logger.error(f"ReAct Agent 第 {iteration + 1} 次迭代 工具 {i + 1} 执行异常: {observation}")
 
                 observation_text = observation if isinstance(observation, str) else str(observation)
                 step["observations"].append(observation_text)
@@ -648,14 +646,16 @@ async def _react_agent_solve_question(
                     tool_builder.add_tool_call(tool_call_item.call_id)
                     conversation_messages.append(tool_builder.build())
                 # logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 工具 {i+1} 执行结果: {observation_text}")
-        
+
         thinking_steps.append(step)
-    
+
     # 达到最大迭代次数或超时，但Agent没有明确返回found_answer
     # 迭代超时应该直接视为not_enough_info，而不是使用已有信息
     # 只有Agent明确返回found_answer时，才认为找到了答案
     if collected_info:
-        logger.warning(f"ReAct Agent达到最大迭代次数或超时，但未明确返回found_answer。已收集信息: {collected_info[:100]}...")
+        logger.warning(
+            f"ReAct Agent达到最大迭代次数或超时，但未明确返回found_answer。已收集信息: {collected_info[:100]}..."
+        )
     if is_timeout:
         logger.warning("ReAct Agent超时，直接视为not_enough_info")
     else:
@@ -665,35 +665,32 @@ async def _react_agent_solve_question(
 
 def _get_recent_query_history(chat_id: str, time_window_seconds: float = 300.0) -> str:
     """获取最近一段时间内的查询历史
-    
+
     Args:
         chat_id: 聊天ID
         time_window_seconds: 时间窗口（秒），默认10分钟
-        
+
     Returns:
         str: 格式化的查询历史字符串
     """
     try:
         current_time = time.time()
         start_time = current_time - time_window_seconds
-        
+
         # 查询最近时间窗口内的记录，按更新时间倒序
         records = (
             ThinkingBack.select()
-            .where(
-                (ThinkingBack.chat_id == chat_id) &
-                (ThinkingBack.update_time >= start_time)
-            )
+            .where((ThinkingBack.chat_id == chat_id) & (ThinkingBack.update_time >= start_time))
             .order_by(ThinkingBack.update_time.desc())
             .limit(5)  # 最多返回5条最近的记录
         )
-        
+
         if not records.exists():
             return ""
-        
+
         history_lines = []
         history_lines.append("最近已查询的问题和结果：")
-        
+
         for record in records:
             status = "✓ 已找到答案" if record.found_answer else "✗ 未找到答案"
             answer_preview = ""
@@ -703,15 +700,15 @@ def _get_recent_query_history(chat_id: str, time_window_seconds: float = 300.0) 
                 answer_preview = record.answer[:100]
                 if len(record.answer) > 100:
                     answer_preview += "..."
-            
+
             history_lines.append(f"- 问题：{record.question}")
             history_lines.append(f"  状态：{status}")
             if answer_preview:
                 history_lines.append(f"  答案：{answer_preview}")
             history_lines.append("")  # 空行分隔
-        
+
         return "\n".join(history_lines)
-        
+
     except Exception as e:
         logger.error(f"获取查询历史失败: {e}")
         return ""
@@ -719,40 +716,40 @@ def _get_recent_query_history(chat_id: str, time_window_seconds: float = 300.0) 
 
 def _get_cached_memories(chat_id: str, time_window_seconds: float = 300.0) -> List[str]:
     """获取最近一段时间内缓存的记忆（只返回找到答案的记录）
-    
+
     Args:
         chat_id: 聊天ID
         time_window_seconds: 时间窗口（秒），默认300秒（5分钟）
-        
+
     Returns:
         List[str]: 格式化的记忆列表，每个元素格式为 "问题：xxx\n答案：xxx"
     """
     try:
         current_time = time.time()
         start_time = current_time - time_window_seconds
-        
+
         # 查询最近时间窗口内找到答案的记录，按更新时间倒序
         records = (
             ThinkingBack.select()
             .where(
-                (ThinkingBack.chat_id == chat_id) &
-                (ThinkingBack.update_time >= start_time) &
-                (ThinkingBack.found_answer == 1)
+                (ThinkingBack.chat_id == chat_id)
+                & (ThinkingBack.update_time >= start_time)
+                & (ThinkingBack.found_answer == 1)
             )
             .order_by(ThinkingBack.update_time.desc())
             .limit(5)  # 最多返回5条最近的记录
         )
-        
+
         if not records.exists():
             return []
-        
+
         cached_memories = []
         for record in records:
             if record.answer:
                 cached_memories.append(f"问题：{record.question}\n答案：{record.answer}")
-        
+
         return cached_memories
-        
+
     except Exception as e:
         logger.error(f"获取缓存记忆失败: {e}")
         return []
@@ -760,11 +757,11 @@ def _get_cached_memories(chat_id: str, time_window_seconds: float = 300.0) -> Li
 
 def _query_thinking_back(chat_id: str, question: str) -> Optional[Tuple[bool, str]]:
     """从thinking_back数据库中查询是否有现成的答案
-    
+
     Args:
         chat_id: 聊天ID
         question: 问题
-        
+
     Returns:
         Optional[Tuple[bool, str]]: 如果找到记录，返回(found_answer, answer)，否则返回None
             found_answer: 是否找到答案（True表示found_answer=1，False表示found_answer=0）
@@ -775,23 +772,20 @@ def _query_thinking_back(chat_id: str, question: str) -> Optional[Tuple[bool, st
         # 按更新时间倒序，获取最新的记录
         records = (
             ThinkingBack.select()
-            .where(
-                (ThinkingBack.chat_id == chat_id) &
-                (ThinkingBack.question == question)
-            )
+            .where((ThinkingBack.chat_id == chat_id) & (ThinkingBack.question == question))
             .order_by(ThinkingBack.update_time.desc())
             .limit(1)
         )
-        
+
         if records.exists():
             record = records.get()
             found_answer = bool(record.found_answer)
             answer = record.answer or ""
             logger.info(f"在thinking_back中找到记录，问题: {question[:50]}...，found_answer: {found_answer}")
             return found_answer, answer
-        
+
         return None
-        
+
     except Exception as e:
         logger.error(f"查询thinking_back失败: {e}")
         return None
@@ -799,7 +793,7 @@ def _query_thinking_back(chat_id: str, question: str) -> Optional[Tuple[bool, st
 
 async def _analyze_question_answer(question: str, answer: str, chat_id: str) -> None:
     """异步分析问题和答案的类别，并存储到相应系统
-    
+
     Args:
         question: 问题
         answer: 答案
@@ -826,41 +820,42 @@ async def _analyze_question_answer(question: str, answer: str, chat_id: str) -> 
 }}
 
 只输出JSON，不要输出其他内容："""
-        
+
         success, response, _, _ = await llm_api.generate_with_model(
             analysis_prompt,
             model_config=model_config.model_task_config.utils,
             request_type="memory.analyze_qa",
         )
-        
+
         if not success:
             logger.error(f"分析问题和答案失败: {response}")
             return
-        
+
         # 解析JSON响应
         try:
             json_pattern = r"```json\s*(.*?)\s*```"
             matches = re.findall(json_pattern, response, re.DOTALL)
-            
+
             if matches:
                 json_str = matches[0]
             else:
                 json_str = response.strip()
-            
+
             repaired_json = repair_json(json_str)
             analysis_result = json.loads(repaired_json)
-            
+
             category = analysis_result.get("category", "").strip()
-            
+
             if category == "黑话":
                 # 处理黑话
                 jargon_keyword = analysis_result.get("jargon_keyword", "").strip()
                 if jargon_keyword:
                     from src.jargon.jargon_miner import store_jargon_from_answer
+
                     await store_jargon_from_answer(jargon_keyword, answer, chat_id)
                 else:
                     logger.warning(f"分析为黑话但未提取到关键词，问题: {question[:50]}...")
-            
+
             elif category == "人物信息":
                 # 处理人物信息
                 # person_name = analysis_result.get("person_name", "").strip()
@@ -871,28 +866,22 @@ async def _analyze_question_answer(question: str, answer: str, chat_id: str) -> 
                 # else:
                 #     logger.warning(f"分析为人物信息但未提取到人物名称或记忆内容，问题: {question[:50]}...")
                 pass  # 功能暂时禁用
-            
+
             else:
                 logger.info(f"问题和答案类别为'其他'，不进行存储，问题: {question[:50]}...")
-        
+
         except Exception as e:
             logger.error(f"解析分析结果失败: {e}, 响应: {response[:200]}...")
-    
+
     except Exception as e:
         logger.error(f"分析问题和答案时发生异常: {e}")
 
 
-
 def _store_thinking_back(
-    chat_id: str,
-    question: str,
-    context: str,
-    found_answer: bool,
-    answer: str,
-    thinking_steps: List[Dict[str, Any]]
+    chat_id: str, question: str, context: str, found_answer: bool, answer: str, thinking_steps: List[Dict[str, Any]]
 ) -> None:
     """存储或更新思考过程到数据库（如果已存在则更新，否则创建）
-    
+
     Args:
         chat_id: 聊天ID
         question: 问题
@@ -903,18 +892,15 @@ def _store_thinking_back(
     """
     try:
         now = time.time()
-        
+
         # 先查询是否已存在相同chat_id和问题的记录
         existing = (
             ThinkingBack.select()
-            .where(
-                (ThinkingBack.chat_id == chat_id) &
-                (ThinkingBack.question == question)
-            )
+            .where((ThinkingBack.chat_id == chat_id) & (ThinkingBack.question == question))
             .order_by(ThinkingBack.update_time.desc())
             .limit(1)
         )
-        
+
         if existing.exists():
             # 更新现有记录
             record = existing.get()
@@ -935,27 +921,22 @@ def _store_thinking_back(
                 answer=answer,
                 thinking_steps=json.dumps(thinking_steps, ensure_ascii=False),
                 create_time=now,
-                update_time=now
+                update_time=now,
             )
             logger.info(f"已创建思考过程到数据库，问题: {question[:50]}...")
     except Exception as e:
         logger.error(f"存储思考过程失败: {e}")
 
 
-async def _process_single_question(
-    question: str,
-    chat_id: str,
-    context: str,
-    initial_info: str = ""
-) -> Optional[str]:
+async def _process_single_question(question: str, chat_id: str, context: str, initial_info: str = "") -> Optional[str]:
     """处理单个问题的查询（包含缓存检查逻辑）
-    
+
     Args:
         question: 要查询的问题
         chat_id: 聊天ID
         context: 上下文信息
         initial_info: 初始信息（如概念检索结果），将传递给ReAct Agent
-        
+
     Returns:
         Optional[str]: 如果找到答案，返回格式化的结果字符串，否则返回None
     """
@@ -978,20 +959,20 @@ async def _process_single_question(
                 logger.info(f"LPMM预查询未命中或未找到信息，问题: {question[:50]}...")
         except Exception as e:
             logger.error(f"LPMM预查询失败，问题: {question[:50]}... 错误: {e}")
-    
+
     # 先检查thinking_back数据库中是否有现成答案
     cached_result = _query_thinking_back(chat_id, question)
     should_requery = False
-    
+
     if cached_result:
         cached_found_answer, cached_answer = cached_result
-        
+
         if cached_found_answer:  # found_answer == 1 (True)
             # found_answer == 1：20%概率重新查询
             if random.random() < 0.5:
                 should_requery = True
                 logger.info(f"found_answer=1，触发20%概率重新查询，问题: {question[:50]}...")
-            
+
             if not should_requery and cached_answer:
                 logger.info(f"从thinking_back缓存中获取答案，问题: {question[:50]}...")
                 return f"问题：{question}\n答案：{cached_answer}"
@@ -1002,22 +983,22 @@ async def _process_single_question(
             # found_answer == 0：不使用缓存，直接重新查询
             should_requery = True
             logger.info(f"thinking_back存在但未找到答案，忽略缓存重新查询，问题: {question[:50]}...")
-    
+
     # 如果没有缓存答案或需要重新查询，使用ReAct Agent查询
     if not cached_result or should_requery:
         if should_requery:
             logger.info(f"概率触发重新查询，使用ReAct Agent查询，问题: {question[:50]}...")
         else:
             logger.info(f"未找到缓存答案，使用ReAct Agent查询，问题: {question[:50]}...")
-        
+
         found_answer, answer, thinking_steps, is_timeout = await _react_agent_solve_question(
             question=question,
             chat_id=chat_id,
             max_iterations=global_config.memory.max_agent_iterations,
             timeout=120.0,
-            initial_info=question_initial_info
+            initial_info=question_initial_info,
         )
-        
+
         # 存储到数据库（超时时不存储）
         if not is_timeout:
             _store_thinking_back(
@@ -1026,16 +1007,16 @@ async def _process_single_question(
                 context=context,
                 found_answer=found_answer,
                 answer=answer,
-                thinking_steps=thinking_steps
+                thinking_steps=thinking_steps,
             )
         else:
             logger.info(f"ReAct Agent超时，不存储到数据库，问题: {question[:50]}...")
-        
+
         if found_answer and answer:
             # 创建异步任务分析问题和答案
             asyncio.create_task(_analyze_question_answer(question, answer, chat_id))
             return f"问题：{question}\n答案：{answer}"
-    
+
     return None
 
 
@@ -1048,30 +1029,30 @@ async def build_memory_retrieval_prompt(
 ) -> str:
     """构建记忆检索提示
     使用两段式查询：第一步生成问题，第二步使用ReAct Agent查询答案
-    
+
     Args:
         message: 聊天历史记录
         sender: 发送者名称
         target: 目标消息内容
         chat_stream: 聊天流对象
         tool_executor: 工具执行器（保留参数以兼容接口）
-        
+
     Returns:
         str: 记忆检索结果字符串
     """
     start_time = time.time()
-    
+
     logger.info(f"检测是否需要回忆，元消息：{message[:30]}...，消息长度: {len(message)}")
     try:
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         bot_name = global_config.bot.nickname
         chat_id = chat_stream.stream_id
-        
+
         # 获取最近查询历史（最近1小时内的查询）
         recent_query_history = _get_recent_query_history(chat_id, time_window_seconds=300.0)
         if not recent_query_history:
             recent_query_history = "最近没有查询记录。"
-        
+
         # 第一步：生成问题
         question_prompt = await global_prompt_manager.format_prompt(
             "memory_retrieval_question_prompt",
@@ -1082,25 +1063,26 @@ async def build_memory_retrieval_prompt(
             sender=sender,
             target_message=target,
         )
-        
+
         success, response, reasoning_content, model_name = await llm_api.generate_with_model(
             question_prompt,
             model_config=model_config.model_task_config.tool_use,
             request_type="memory.question",
         )
-        
-        logger.info(f"记忆检索问题生成提示词: {question_prompt}")
+
+        if global_config.debug.show_memory_prompt:
+            logger.info(f"记忆检索问题生成提示词: {question_prompt}")
         logger.info(f"记忆检索问题生成响应: {response}")
-        
+
         if not success:
             logger.error(f"LLM生成问题失败: {response}")
             return ""
-        
+
         # 解析概念列表和问题列表
         concepts, questions = _parse_questions_json(response)
         logger.info(f"解析到 {len(concepts)} 个概念: {concepts}")
         logger.info(f"解析到 {len(questions)} 个问题: {questions}")
-        
+
         # 对概念进行jargon检索，作为初始信息
         initial_info = ""
         if concepts:
@@ -1111,11 +1093,10 @@ async def build_memory_retrieval_prompt(
                 logger.info(f"概念检索完成，结果: {concept_info[:200]}...")
             else:
                 logger.info("概念检索未找到任何结果")
-        
-        
+
         # 获取缓存的记忆（与question时使用相同的时间窗口和数量限制）
         cached_memories = _get_cached_memories(chat_id, time_window_seconds=300.0)
-        
+
         if not questions:
             logger.debug("模型认为不需要检索记忆或解析失败")
             # 即使没有当次查询，也返回缓存的记忆和概念检索结果
@@ -1124,7 +1105,7 @@ async def build_memory_retrieval_prompt(
                 all_results.append(initial_info.strip())
             if cached_memories:
                 all_results.extend(cached_memories)
-            
+
             if all_results:
                 retrieved_memory = "\n\n".join(all_results)
                 end_time = time.time()
@@ -1132,27 +1113,22 @@ async def build_memory_retrieval_prompt(
                 return f"你回忆起了以下信息：\n{retrieved_memory}\n如果与回复内容相关，可以参考这些回忆的信息。\n"
             else:
                 return ""
-        
+
         logger.info(f"解析到 {len(questions)} 个问题: {questions}")
-        
+
         # 第二步：并行处理所有问题（使用配置的最大迭代次数/120秒超时）
         max_iterations = global_config.memory.max_agent_iterations
         logger.info(f"问题数量: {len(questions)}，设置最大迭代次数: {max_iterations}，超时时间: 120秒")
-        
+
         # 并行处理所有问题，将概念检索结果作为初始信息传递
         question_tasks = [
-            _process_single_question(
-                question=question,
-                chat_id=chat_id,
-                context=message,
-                initial_info=initial_info
-            )
+            _process_single_question(question=question, chat_id=chat_id, context=message, initial_info=initial_info)
             for question in questions
         ]
-        
+
         # 并行执行所有查询任务
         results = await asyncio.gather(*question_tasks, return_exceptions=True)
-        
+
         # 收集所有有效结果
         all_results = []
         current_questions = set()  # 用于去重，避免缓存和当次查询重复
@@ -1165,7 +1141,7 @@ async def build_memory_retrieval_prompt(
                 if result.startswith("问题："):
                     question = result.split("\n")[0].replace("问题：", "").strip()
                     current_questions.add(question)
-        
+
         # 将缓存的记忆添加到结果中（排除当次查询已包含的问题，避免重复）
         for cached_memory in cached_memories:
             if cached_memory.startswith("问题："):
@@ -1174,17 +1150,19 @@ async def build_memory_retrieval_prompt(
                 if question not in current_questions:
                     all_results.append(cached_memory)
                     logger.debug(f"添加缓存记忆: {question[:50]}...")
-        
+
         end_time = time.time()
-        
+
         if all_results:
             retrieved_memory = "\n\n".join(all_results)
-            logger.info(f"记忆检索成功，耗时: {(end_time - start_time):.3f}秒，包含 {len(all_results)} 条记忆（含缓存）")
+            logger.info(
+                f"记忆检索成功，耗时: {(end_time - start_time):.3f}秒，包含 {len(all_results)} 条记忆（含缓存）"
+            )
             return f"你回忆起了以下信息：\n{retrieved_memory}\n如果与回复内容相关，可以参考这些回忆的信息。\n"
         else:
             logger.debug("所有问题均未找到答案，且无缓存记忆")
             return ""
-            
+
     except Exception as e:
         logger.error(f"记忆检索时发生异常: {str(e)}")
         return ""
@@ -1192,10 +1170,10 @@ async def build_memory_retrieval_prompt(
 
 def _parse_questions_json(response: str) -> Tuple[List[str], List[str]]:
     """解析问题JSON，返回概念列表和问题列表
-    
+
     Args:
         response: LLM返回的响应
-        
+
     Returns:
         Tuple[List[str], List[str]]: (概念列表, 问题列表)
     """
@@ -1203,39 +1181,39 @@ def _parse_questions_json(response: str) -> Tuple[List[str], List[str]]:
         # 尝试提取JSON（可能包含在```json代码块中）
         json_pattern = r"```json\s*(.*?)\s*```"
         matches = re.findall(json_pattern, response, re.DOTALL)
-        
+
         if matches:
             json_str = matches[0]
         else:
             # 尝试直接解析整个响应
             json_str = response.strip()
-        
+
         # 修复可能的JSON错误
         repaired_json = repair_json(json_str)
-        
+
         # 解析JSON
         parsed = json.loads(repaired_json)
-        
+
         # 只支持新格式：包含concepts和questions的对象
         if not isinstance(parsed, dict):
             logger.warning(f"解析的JSON不是对象格式: {parsed}")
             return [], []
-        
+
         concepts_raw = parsed.get("concepts", [])
         questions_raw = parsed.get("questions", [])
-        
+
         # 确保是列表
         if not isinstance(concepts_raw, list):
             concepts_raw = []
         if not isinstance(questions_raw, list):
             questions_raw = []
-        
+
         # 确保所有元素都是字符串
         concepts = [c for c in concepts_raw if isinstance(c, str) and c.strip()]
         questions = [q for q in questions_raw if isinstance(q, str) and q.strip()]
-        
+
         return concepts, questions
-        
+
     except Exception as e:
         logger.error(f"解析问题JSON失败: {e}, 响应内容: {response[:200]}...")
         return [], []

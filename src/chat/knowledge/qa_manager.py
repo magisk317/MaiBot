@@ -92,9 +92,10 @@ class QAManager:
         # 过滤阈值
         result = dyn_select_top_k(result, 0.5, 1.0)
 
-        for res in result:
-            raw_paragraph = self.embed_manager.paragraphs_embedding_store.store[res[0]].str
-            logger.info(f"找到相关文段，相关系数：{res[1]:.8f}\n{raw_paragraph}\n\n")
+        if global_config.debug.show_lpmm_paragraph:
+            for res in result:
+                raw_paragraph = self.embed_manager.paragraphs_embedding_store.store[res[0]].str
+                logger.info(f"找到相关文段，相关系数：{res[1]:.8f}\n{raw_paragraph}\n\n")
 
         return result, ppr_node_weights
 
@@ -128,11 +129,10 @@ class QAManager:
             selected_knowledge = knowledge[:limit]
 
             formatted_knowledge = [
-                f"第{i + 1}条知识：{k[0]}\n 该条知识对于问题的相关性：{k[1]}"
-                for i, k in enumerate(selected_knowledge)
+                f"第{i + 1}条知识：{k[0]}\n 该条知识对于问题的相关性：{k[1]}" for i, k in enumerate(selected_knowledge)
             ]
             # if max_score is not None:
-                # formatted_knowledge.insert(0, f"最高相关系数：{max_score}")
+            # formatted_knowledge.insert(0, f"最高相关系数：{max_score}")
 
             found_knowledge = "\n".join(formatted_knowledge)
             if len(found_knowledge) > MAX_KNOWLEDGE_LENGTH:

@@ -467,11 +467,7 @@ class ExpressionLearner:
         up_content: str,
         current_time: float,
     ) -> None:
-        expr_obj = (
-            Expression.select()
-            .where((Expression.chat_id == self.chat_id) & (Expression.style == style))
-            .first()
-        )
+        expr_obj = Expression.select().where((Expression.chat_id == self.chat_id) & (Expression.style == style)).first()
 
         if expr_obj:
             await self._update_existing_expression(

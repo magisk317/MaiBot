@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import os
-import sys
 import time
 import platform
 import traceback
@@ -30,7 +29,7 @@ else:
         raise
 
 # 最早期初始化日志系统，确保所有后续模块都使用正确的日志格式
-from src.common.logger import initialize_logging, get_logger, shutdown_logging #noqa
+from src.common.logger import initialize_logging, get_logger, shutdown_logging  # noqa
 
 initialize_logging()
 
@@ -75,6 +74,15 @@ def easter_egg():
 async def graceful_shutdown():  # sourcery skip: use-named-expression
     try:
         logger.info("正在优雅关闭麦麦...")
+
+        # 关闭 WebUI 服务器
+        try:
+            from src.webui.webui_server import get_webui_server
+            webui_server = get_webui_server()
+            if webui_server and webui_server._server:
+                await webui_server.shutdown()
+        except Exception as e:
+            logger.warning(f"关闭 WebUI 服务器时出错: {e}")
 
         from src.plugin_system.core.events_manager import events_manager
         from src.plugin_system.base.component_types import EventType
@@ -212,9 +220,10 @@ if __name__ == "__main__":
         # 创建事件循环
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         # 初始化 WebSocket 日志推送
         from src.common.logger import initialize_ws_handler
+
         initialize_ws_handler(loop)
 
         try:
@@ -251,7 +260,7 @@ if __name__ == "__main__":
             print(f"关闭日志系统时出错: {e}")
 
         print("[主程序] 准备退出...")
-        
+
         # 使用 os._exit() 强制退出，避免被阻塞
         # 由于已经在 graceful_shutdown() 中完成了所有清理工作，这是安全的
         os._exit(exit_code)

@@ -73,5 +73,3 @@ def register_tool():
         ],
         execute_func=query_lpmm_knowledge,
     )
-
-

@@ -42,8 +42,6 @@ def init_prompt():
     Prompt(expression_evaluation_prompt, "expression_evaluation_prompt")
 
 
-
-
 class ExpressionSelector:
     def __init__(self):
         self.llm_model = LLMRequest(
@@ -238,9 +236,9 @@ class ExpressionSelector:
             else:
                 target_message_str = ""
                 target_message_extra_block = ""
-                
+
             chat_context = f"以下是正在进行的聊天内容：{chat_info}"
-    
+
             # 构建reply_reason块
             if reply_reason:
                 reply_reason_block = f"你的回复理由是：{reply_reason}"
@@ -262,9 +260,8 @@ class ExpressionSelector:
             # 4. 调用LLM
             content, (reasoning_content, model_name, _) = await self.llm_model.generate_response_async(prompt=prompt)
 
-            
             # print(prompt)
-            
+
             if not content:
                 logger.warning("LLM返回空结果")
                 return [], []
