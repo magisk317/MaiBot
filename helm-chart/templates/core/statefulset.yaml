@@ -82,6 +82,8 @@ spec:
           image: {{ .Values.core.webui.cm_sync.image.repository | default "reg.mikumikumi.xyz/maibot/core-webui-cm-sync" }}:{{ .Values.core.webui.cm_sync.image.tag | default "0.11.5-beta" }}
           imagePullPolicy: {{ .Values.core.webui.cm_sync.image.pullPolicy }}
           env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
             - name: RELEASE_NAME
               value: {{ .Release.Name }}
           volumeMounts:
