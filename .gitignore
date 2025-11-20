@@ -2,6 +2,7 @@ data/
 data1/
 mongodb/
 NapCat.Framework.Windows.Once/
+NapCat.Framework.Windows.OneKey/
 log/
 logs/
 out/
@@ -49,6 +50,7 @@ template/compare/model_config_template.toml
 （临时版）麦麦开始学习.bat
 src/plugins/utils/statistic.py
 CLAUDE.md
+MaiBot-Dashboard/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -67,7 +69,6 @@ elua.confirmed
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/

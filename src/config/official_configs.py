@@ -27,7 +27,7 @@ class BotConfig(ConfigBase):
 
     nickname: str
     """昵称"""
-    
+
     platforms: list[str] = field(default_factory=lambda: [])
     """其他平台列表"""
 
@@ -88,12 +88,6 @@ class ChatConfig(ConfigBase):
     mentioned_bot_reply: bool = True
     """是否启用提及必回复"""
 
-    auto_chat_value: float = 1
-    """自动聊天，越小，麦麦主动聊天的概率越低"""
-
-    enable_auto_chat_value_rules: bool = True
-    """是否启用动态自动聊天频率规则"""
-
     at_bot_inevitable_reply: float = 1
     """@bot 必然回复，1为100%回复，0为不额外增幅"""
 
@@ -119,26 +113,12 @@ class ChatConfig(ConfigBase):
         ["qq:114514:private", "00:00-23:59", 0.3],# 指定私聊全时段较安静
     ]
 
-    匹配优先级: 先匹配指定 chat 流规则，再匹配全局规则(\"\").
+    匹配优先级: 先匹配指定 chat 流规则，再匹配全局规则(\"\"). 
     时间区间支持跨夜，例如 "23:00-02:00"。
     """
 
-    auto_chat_value_rules: list[dict] = field(default_factory=lambda: [])
-    """
-    自动聊天频率规则列表，支持按聊天流/按日内时段配置。
-    规则格式：{ target="platform:id:type" 或 "", time="HH:MM-HH:MM", value=0.5 }
-
-    示例:
-    [
-        ["", "00:00-08:59", 0.2],                 # 全局规则：凌晨到早上更安静
-        ["", "09:00-22:59", 1.0],                 # 全局规则：白天正常
-        ["qq:1919810:group", "20:00-23:59", 0.6], # 指定群在晚高峰降低发言
-        ["qq:114514:private", "00:00-23:59", 0.3],# 指定私聊全时段较安静
-    ]
-
-    匹配优先级: 先匹配指定 chat 流规则，再匹配全局规则(\"\").
-    时间区间支持跨夜，例如 "23:00-02:00"。
-    """
+    include_planner_reasoning: bool = False
+    """是否将planner推理加入replyer，默认关闭（不加入）"""
 
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
         """与 ChatStream.get_stream_id 一致地从 "platform:id:type" 生成 chat_id。"""
@@ -245,61 +225,6 @@ class ChatConfig(ConfigBase):
         # 3) 未命中规则返回基础值
         return self.talk_value
 
-    def get_auto_chat_value(self, chat_id: Optional[str]) -> float:
-        """根据规则返回当前 chat 的动态 auto_chat_value，未匹配则回退到基础值。"""
-        if not self.enable_auto_chat_value_rules or not self.auto_chat_value_rules:
-            return self.auto_chat_value
-
-        now_min = self._now_minutes()
-
-        # 1) 先尝试匹配指定 chat 的规则
-        if chat_id:
-            for rule in self.auto_chat_value_rules:
-                if not isinstance(rule, dict):
-                    continue
-                target = rule.get("target", "")
-                time_range = rule.get("time", "")
-                value = rule.get("value", None)
-                if not isinstance(time_range, str):
-                    continue
-                # 跳过全局
-                if target == "":
-                    continue
-                config_chat_id = self._parse_stream_config_to_chat_id(str(target))
-                if config_chat_id is None or config_chat_id != chat_id:
-                    continue
-                parsed = self._parse_range(time_range)
-                if not parsed:
-                    continue
-                start_min, end_min = parsed
-                if self._in_range(now_min, start_min, end_min):
-                    try:
-                        return float(value)
-                    except Exception:
-                        continue
-
-        # 2) 再匹配全局规则("")
-        for rule in self.auto_chat_value_rules:
-            if not isinstance(rule, dict):
-                continue
-            target = rule.get("target", None)
-            time_range = rule.get("time", "")
-            value = rule.get("value", None)
-            if target != "" or not isinstance(time_range, str):
-                continue
-            parsed = self._parse_range(time_range)
-            if not parsed:
-                continue
-            start_min, end_min = parsed
-            if self._in_range(now_min, start_min, end_min):
-                try:
-                    return float(value)
-                except Exception:
-                    continue
-
-        # 3) 未命中规则返回基础值
-        return self.auto_chat_value
-
 
 @dataclass
 class MessageReceiveConfig(ConfigBase):
@@ -311,22 +236,23 @@ class MessageReceiveConfig(ConfigBase):
     ban_msgs_regex: set[str] = field(default_factory=lambda: set())
     """过滤正则表达式列表"""
 
+
 @dataclass
 class MemoryConfig(ConfigBase):
     """记忆配置类"""
-    
-    max_memory_number: int = 100
-    """记忆最大数量"""
-    
-    memory_build_frequency: int = 1
-    """记忆构建频率"""
+
+    max_agent_iterations: int = 5
+    """Agent最多迭代轮数（最低为1）"""
+
+    def __post_init__(self):
+        """验证配置值"""
+        if self.max_agent_iterations < 1:
+            raise ValueError(f"max_agent_iterations 必须至少为1，当前值: {self.max_agent_iterations}")
+
 
 @dataclass
 class ExpressionConfig(ConfigBase):
     """表达配置类"""
-
-    mode: str = "classic"
-    """表达方式模式，可选：classic经典模式，exp_model 表达模型模式"""
 
     learning_list: list[list] = field(default_factory=lambda: [])
     """
@@ -494,12 +420,13 @@ class MoodConfig(ConfigBase):
 
     enable_mood: bool = True
     """是否启用情绪系统"""
-    
+
     mood_update_threshold: float = 1
     """情绪更新阈值,越高，更新越慢"""
-    
+
     emotion_style: str = "情绪较为稳定，但遭遇特定事件的时候起伏较大"
     """情感特征，影响情绪的变化情况"""
+
 
 @dataclass
 class VoiceConfig(ConfigBase):
@@ -626,6 +553,9 @@ class ResponseSplitterConfig(ConfigBase):
     enable_kaomoji_protection: bool = False
     """是否启用颜文字保护"""
 
+    enable_overflow_return_all: bool = False
+    """是否在超出句子数量限制时合并后一次性返回"""
+
 
 @dataclass
 class TelemetryConfig(ConfigBase):
@@ -641,12 +571,18 @@ class DebugConfig(ConfigBase):
 
     show_prompt: bool = False
     """是否显示prompt"""
-    
+
     show_replyer_prompt: bool = True
     """是否显示回复器prompt"""
-    
+
     show_replyer_reasoning: bool = True
     """是否显示回复器推理"""
+
+    show_jargon_prompt: bool = False
+    """是否显示jargon相关提示词"""
+
+    show_planner_prompt: bool = False
+    """是否显示planner相关提示词"""
 
 
 @dataclass
@@ -655,6 +591,25 @@ class ExperimentalConfig(ConfigBase):
 
     enable_friend_chat: bool = False
     """是否启用好友聊天"""
+
+    chat_prompts: list[str] = field(default_factory=lambda: [])
+    """
+    为指定聊天添加额外的prompt配置列表
+    格式: ["platform:id:type:prompt内容", ...]
+    
+    示例:
+    [
+        "qq:114514:group:这是一个摄影群，你精通摄影知识",
+        "qq:19198:group:这是一个二次元交流群",
+        "qq:114514:private:这是你与好朋友的私聊"
+    ]
+    
+    说明:
+    - platform: 平台名称，如 "qq"
+    - id: 群ID或用户ID
+    - type: "group" 或 "private"
+    - prompt内容: 要添加的额外prompt文本
+    """
 
 
 @dataclass
@@ -692,6 +647,9 @@ class LPMMKnowledgeConfig(ConfigBase):
 
     enable: bool = True
     """是否启用LPMM知识库"""
+    
+    lpmm_mode: Literal["classic", "agent"] = "classic"
+    """LPMM知识库模式，可选：classic经典模式，agent 模式，结合最新的记忆一同使用"""
 
     rag_synonym_search_top_k: int = 10
     """RAG同义词搜索的Top K数量"""
@@ -725,3 +683,11 @@ class LPMMKnowledgeConfig(ConfigBase):
 
     embedding_dimension: int = 1024
     """嵌入向量维度，应该与模型的输出维度一致"""
+
+
+@dataclass
+class JargonConfig(ConfigBase):
+    """Jargon配置类"""
+
+    all_global: bool = False
+    """是否将所有新增的jargon项目默认为全局（is_global=True），chat_id记录第一次存储时的id"""

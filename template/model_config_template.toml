@@ -1,5 +1,5 @@
 [inner]
-version = "1.7.7"
+version = "1.7.8"
 
 # 配置文件版本号迭代规则同bot_config.toml
 
@@ -103,23 +103,24 @@ price_in = 0
 price_out = 0
 
 
+
 [model_task_config.utils] # 在麦麦的一些组件中使用的模型，例如表情包模块，取名模块，关系模块，麦麦的情绪变化等，是麦麦必须的模型
 model_list = ["siliconflow-deepseek-v3.2"] # 使用的模型列表，每个子项对应上面的模型名称(name)
 temperature = 0.2                        # 模型温度，新V3建议0.1-0.3
 max_tokens = 2048                         # 最大输出token数
 
 [model_task_config.utils_small] # 在麦麦的一些组件中使用的小模型，消耗量较大，建议使用速度较快的小模型
-model_list = ["qwen3-30b"]
+model_list = ["qwen3-30b","qwen3-next-80b"]
 temperature = 0.7
 max_tokens = 2048
 
 [model_task_config.tool_use] #工具调用模型，需要使用支持工具调用的模型
-model_list = ["qwen3-30b"]
+model_list = ["qwen3-30b","qwen3-next-80b"]
 temperature = 0.7
 max_tokens = 800
 
 [model_task_config.replyer] # 首要回复模型，还用于表达器和表达方式学习
-model_list = ["siliconflow-deepseek-v3.2-think","siliconflow-deepseek-r1","siliconflow-deepseek-v3.2"]
+model_list = ["siliconflow-deepseek-v3.2-think","siliconflow-glm-4.6-think","siliconflow-glm-4.6"]
 temperature = 0.3                        # 模型温度，新V3建议0.1-0.3
 max_tokens = 2048
 

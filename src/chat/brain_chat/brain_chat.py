@@ -21,7 +21,6 @@ from src.person_info.person_info import Person
 from src.plugin_system.base.component_types import EventType, ActionInfo
 from src.plugin_system.core import events_manager
 from src.plugin_system.apis import generator_api, send_api, message_api, database_api
-from src.memory_system.Memory_chest import global_memory_chest
 from src.chat.utils.chat_message_builder import (
     build_readable_messages_with_id,
     get_raw_msg_before_timestamp_with_chat,
@@ -238,7 +237,6 @@ class BrainChatting:
 
         async with global_prompt_manager.async_message_scope(self.chat_stream.context.get_template_name()):
             asyncio.create_task(self.expression_learner.trigger_learning_for_chat())
-            asyncio.create_task(global_memory_chest.build_running_content(chat_id=self.stream_id))
 
             cycle_timers, thinking_id = self.start_cycle()
             logger.info(f"{self.log_prefix} 开始第{self._cycle_counter}次思考")

@@ -20,6 +20,8 @@ logger = get_logger("database_model")
 
 # 定义一个基础模型是一个好习惯，所有其他模型都应继承自它。
 # 这允许您在一个地方为所有模型指定数据库。
+
+
 class BaseModel(Model):
     class Meta:
         # 将下面的 'db' 替换为您实际的数据库实例变量名。
@@ -265,6 +267,7 @@ class PersonInfo(BaseModel):
     platform = TextField()  # 平台
     user_id = TextField(index=True)  # 用户ID
     nickname = TextField(null=True)  # 用户昵称
+    group_nick_name = TextField(null=True)  # 群昵称列表 (JSON格式，存储 [{"group_id": str, "group_nick_name": str}])
     memory_points = TextField(null=True)  # 个人印象的点
     know_times = FloatField(null=True)  # 认识时间 (时间戳)
     know_since = FloatField(null=True)  # 首次印象总结时间
@@ -308,6 +311,8 @@ class Expression(BaseModel):
     context = TextField(null=True)
     up_content = TextField(null=True)
 
+    content_list = TextField(null=True)
+    count = IntegerField(default=1)
     last_active_time = FloatField()
     chat_id = TextField(index=True)
     create_date = FloatField(null=True)  # 创建日期，允许为空以兼容老数据
@@ -315,35 +320,83 @@ class Expression(BaseModel):
     class Meta:
         table_name = "expression"
 
-class MemoryChest(BaseModel):
+
+class Jargon(BaseModel):
     """
-    用于存储记忆仓库的模型
+    用于存储俚语的模型
     """
 
-    title = TextField()  # 标题
-    content = TextField()  # 内容
-    chat_id = TextField(null=True)  # 聊天ID
-    locked = BooleanField(default=False)  # 是否锁定
+    content = TextField()
+    raw_content = TextField(null=True)
+    type = TextField(null=True)
+    translation = TextField(null=True)
+    meaning = TextField(null=True)
+    chat_id = TextField(index=True)
+    is_global = BooleanField(default=False)
+    count = IntegerField(default=0)
+    is_jargon = BooleanField(null=True)  # None表示未判定，True表示是黑话，False表示不是黑话
+    last_inference_count = IntegerField(null=True)  # 最后一次判定的count值，用于避免重启后重复判定
+    is_complete = BooleanField(default=False)  # 是否已完成所有推断（count>=100后不再推断）
+    inference_with_context = TextField(null=True)  # 基于上下文的推断结果（JSON格式）
+    inference_content_only = TextField(null=True)  # 仅基于词条的推断结果（JSON格式）
 
     class Meta:
-        table_name = "memory_chest"
+        table_name = "jargon"
 
-class MemoryConflict(BaseModel):
+
+class ChatHistory(BaseModel):
     """
-    用于存储记忆整合过程中冲突内容的模型
+    用于存储聊天历史概括的模型
     """
 
-    conflict_content = TextField()  # 冲突内容
-    answer = TextField(null=True)  # 回答内容
-    create_time = FloatField()  # 创建时间
-    update_time = FloatField()  # 更新时间
-    context = TextField(null=True)  # 上下文
-    chat_id = TextField(null=True)  # 聊天ID
-    raise_time = FloatField(null=True)  # 触发次数
+    chat_id = TextField(index=True)  # 聊天ID
+    start_time = DoubleField()  # 起始时间
+    end_time = DoubleField()  # 结束时间
+    original_text = TextField()  # 对话原文
+    participants = TextField()  # 参与的所有人的昵称，JSON格式存储
+    theme = TextField()  # 主题：这段对话的主要内容，一个简短的标题
+    keywords = TextField()  # 关键词：这段对话的关键词，JSON格式存储
+    summary = TextField()  # 概括：对这段话的平文本概括
+    count = IntegerField(default=0)  # 被检索次数
+    forget_times = IntegerField(default=0)  # 被遗忘检查的次数
 
     class Meta:
-        table_name = "memory_conflicts"
+        table_name = "chat_history"
 
+
+class ThinkingBack(BaseModel):
+    """
+    用于存储记忆检索思考过程的模型
+    """
+
+    chat_id = TextField(index=True)  # 聊天ID
+    question = TextField()  # 提出的问题
+    context = TextField(null=True)  # 上下文信息
+    found_answer = BooleanField(default=False)  # 是否找到答案
+    answer = TextField(null=True)  # 答案内容
+    thinking_steps = TextField(null=True)  # 思考步骤（JSON格式）
+    create_time = DoubleField()  # 创建时间
+    update_time = DoubleField()  # 更新时间
+
+    class Meta:
+        table_name = "thinking_back"
+
+
+MODELS = [
+    ChatStreams,
+    LLMUsage,
+    Emoji,
+    Messages,
+    Images,
+    ImageDescriptions,
+    OnlineTime,
+    PersonInfo,
+    Expression,
+    ActionRecords,
+    Jargon,
+    ChatHistory,
+    ThinkingBack,
+]
 
 
 def create_tables():
@@ -351,22 +404,7 @@ def create_tables():
     创建所有在模型中定义的数据库表。
     """
     with db:
-        db.create_tables(
-            [
-                ChatStreams,
-                LLMUsage,
-                Emoji,
-                Messages,
-                Images,
-                ImageDescriptions,
-                OnlineTime,
-                PersonInfo,
-                Expression,
-                ActionRecords,  # 添加 ActionRecords 到初始化列表
-                MemoryChest,
-                MemoryConflict,  # 添加记忆冲突表
-            ]
-        )
+        db.create_tables(MODELS)
 
 
 def initialize_database(sync_constraints=False):
@@ -379,24 +417,9 @@ def initialize_database(sync_constraints=False):
                                如果为 True，会检查并修复字段的 NULL 约束不一致问题。
     """
 
-    models = [
-        ChatStreams,
-        LLMUsage,
-        Emoji,
-        Messages,
-        Images,
-        ImageDescriptions,
-        OnlineTime,
-        PersonInfo,
-        Expression,
-        ActionRecords,  # 添加 ActionRecords 到初始化列表
-        MemoryChest,
-        MemoryConflict,
-    ]
-
     try:
         with db:  # 管理 table_exists 检查的连接
-            for model in models:
+            for model in MODELS:
                 table_name = model._meta.table_name
                 if not db.table_exists(model):
                     logger.warning(f"表 '{table_name}' 未找到，正在创建...")
@@ -476,24 +499,9 @@ def sync_field_constraints():
     如果发现不一致，会自动修复字段约束。
     """
 
-    models = [
-        ChatStreams,
-        LLMUsage,
-        Emoji,
-        Messages,
-        Images,
-        ImageDescriptions,
-        OnlineTime,
-        PersonInfo,
-        Expression,
-        ActionRecords,
-        MemoryChest,
-        MemoryConflict,
-    ]
-
     try:
         with db:
-            for model in models:
+            for model in MODELS:
                 table_name = model._meta.table_name
                 if not db.table_exists(model):
                     logger.warning(f"表 '{table_name}' 不存在，跳过约束检查")
@@ -660,26 +668,11 @@ def check_field_constraints():
     用于在修复前预览需要修复的内容。
     """
 
-    models = [
-        ChatStreams,
-        LLMUsage,
-        Emoji,
-        Messages,
-        Images,
-        ImageDescriptions,
-        OnlineTime,
-        PersonInfo,
-        Expression,
-        ActionRecords,
-        MemoryChest,
-        MemoryConflict,
-    ]
-
     inconsistencies = {}
 
     try:
         with db:
-            for model in models:
+            for model in MODELS:
                 table_name = model._meta.table_name
                 if not db.table_exists(model):
                     continue

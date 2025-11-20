@@ -103,14 +103,16 @@ class ImageManager:
         invalid_values = ["", "None"]
 
         # 清理 Images 表
-        deleted_images = Images.delete().where(
-            (Images.description >> None) | (Images.description << invalid_values)
-        ).execute()
+        deleted_images = (
+            Images.delete().where((Images.description >> None) | (Images.description << invalid_values)).execute()
+        )
 
         # 清理 ImageDescriptions 表
-        deleted_descriptions = ImageDescriptions.delete().where(
-            (ImageDescriptions.description >> None) | (ImageDescriptions.description << invalid_values)
-        ).execute()
+        deleted_descriptions = (
+            ImageDescriptions.delete()
+            .where((ImageDescriptions.description >> None) | (ImageDescriptions.description << invalid_values))
+            .execute()
+        )
 
         if deleted_images or deleted_descriptions:
             logger.info(f"[清理完成] 删除 Images: {deleted_images} 条, ImageDescriptions: {deleted_descriptions} 条")

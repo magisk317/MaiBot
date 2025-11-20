@@ -109,7 +109,7 @@ def get_messages_by_time_in_chat(
         limit=limit,
         limit_mode=limit_mode,
         filter_bot=filter_mai,
-        filter_command=filter_command
+        filter_command=filter_command,
     )
 
 
