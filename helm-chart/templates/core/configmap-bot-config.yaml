@@ -6,6 +6,8 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-maibot-core-bot-config
   namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/resource-policy": keep
 data:
   bot_config.toml: |
     {{ .Values.config.core_bot_config | nindent 4 }}
