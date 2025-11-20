@@ -11,7 +11,7 @@ spec:
   backoffLimit: 2
   template:
     spec:
-      serviceAccountName: {{ .Release.Name }}-maibot-adapter-cm-generator
+      serviceAccountName: {{ .Release.Name }}-maibot-sa
       restartPolicy: Never
       containers:
         - name: adapter-cm-generator

@@ -67,6 +67,11 @@ core:
 
   webui:  # WebUI相关配置
     enabled: true  # 默认启用
+    cm_sync:  # WebUI的辅助容器配置
+      image:
+        repository: # 默认 reg.mikumikumi.xyz/maibot/core-webui-cm-sync
+        tag: # 默认 0.11.5-beta
+        pullPolicy: IfNotPresent
     service:
       type: ClusterIP  # ClusterIP / NodePort 指定NodePort可以将内网的服务端口映射到物理节点的端口
       port: 8001  # 服务端口
