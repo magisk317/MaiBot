@@ -43,8 +43,8 @@ class ConfigObserverHandler(FileSystemEventHandler):
     """配置文件变化的事件处理器"""
     def on_modified(self, event):
         if os.path.abspath(event.src_path) in target_files:
-            print(
-                f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] File `{event.src_path}` was modified. Start to sync...')
+            print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] File `{event.src_path}` was modified. '
+                  f'Start to sync...')
             with open(event.src_path, "r", encoding="utf-8") as _f:
                 current_data = _f.read()
             new_cm = {
@@ -52,6 +52,7 @@ class ConfigObserverHandler(FileSystemEventHandler):
             }
             try:
                 set_configmap(new_cm)
+                print(f'\tSync done.')
             except client.exceptions.ApiException as _e:
                 print(f'\tError while setting configmap:\n'
                       f'\t\tStatus Code: {_e.status}\n'

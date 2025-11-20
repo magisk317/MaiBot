@@ -16,7 +16,7 @@ mkdir -p /MaiMBot/data/plugins
 mkdir -p /MaiMBot/data/logs
 if [ ! -d "/MaiMBot/statistics" ]
 then
-  echo "[K8s Init] Statistics volume disabled."
+  echo "[K8s Init] Statistics volume is disabled."
 else
   touch /MaiMBot/statistics/index.html
 fi
@@ -47,7 +47,7 @@ then
   ln -s /MaiMBot/webui-cm-sync/bot_config.toml /MaiMBot/config/bot_config.toml
   echo "[K8s Init] Config files middle layer for WebUI created."
 else
-  echo "[K8s Init] WebUI disabled."
+  echo "[K8s Init] WebUI is disabled."
 fi
 
 # 启动麦麦
