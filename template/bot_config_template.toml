@@ -150,7 +150,6 @@ ban_msgs_regex = [
 
 [lpmm_knowledge] # lpmm知识库配置
 enable = false # 是否启用lpmm知识库
-enable = false # 是否开启lpmm知识库
 lpmm_mode = "agent"
 # 可选择classic传统模式/agent 模式，结合新的记忆一同使用
 rag_synonym_search_top_k = 10 # 同义检索TopK
