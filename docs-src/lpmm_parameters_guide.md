@@ -2,6 +2,8 @@
 
 > 本文是对 `config/bot_config.toml` 中 `[lpmm_knowledge]` 段的补充说明。  
 > 如果你只想使用默认配置，可以不改这些参数，脚本仍然可以正常工作。
+>
+> 重要提醒：无论是修改 `[lpmm_knowledge]` 段的参数，还是通过脚本导入 / 删除 LPMM 知识库数据，主程序都需要重启（或在内部调用一次 `lpmm_start_up()`）后，新的参数和知识才会真正生效到聊天侧。
 
 所有与 LPMM 相关的参数，都集中在：
 
@@ -110,6 +112,10 @@ ppr_relation_cap      = 50    # 命中关系数超过该值时自动跳过PPR
 >   - `info_extraction_workers`  
 >   - 或暂时将 `enable_ppr = false`  （除非真的出现问题，否则不建议禁用此项，大幅影响检索效果）
 > - 调整后重新执行导入或检索，观察日志与系统资源占用。
+
+> 小提示：每次大改参数或批量删除知识后，建议用  
+> - `scripts/test_lpmm_retrieval.py` 看回答风格是否如预期；  
+> - 如需确认当前磁盘数据能否正常初始化，可执行 `scripts/refresh_lpmm_knowledge.py` 做一次快速自检。
 
 ---
 

@@ -7,8 +7,11 @@
 - 导入 / 删除后的自检与检索效果验证
 
 > 说明：本文默认你已经完成 MaiBot 的基础安装，并能在项目根目录打开命令行终端。
+> 重要提醒：每次使用导入 / 删除相关脚本（如 `import_openie.py`、`delete_lpmm_items.py`）修改 LPMM 知识库后，聊天机器人 / WebUI 端要想看到最新知识，需要重启主程序，或在主程序内部显式调用一次 `lpmm_start_up()` 重新初始化 LPMM
 
 ---
+。
+
 
 ## 一、需要用到的脚本一览
 
@@ -21,11 +24,9 @@
     调用大模型，从每个段落里抽取实体和三元组，生成中间的 OpenIE JSON 文件。
   - `scripts/import_openie.py`  
     把 `data/openie` 目录中的 OpenIE JSON 文件导入到 LPMM 知识库（向量库 + 知识图）。
-
 - 删除相关：
   - `scripts/delete_lpmm_items.py`  
     LPMM 知识库删除入口，支持按批次、按原始文本段落、按哈希列表、按关键字模糊搜索删除。
-
 - 自检相关：
   - `scripts/inspect_lpmm_global.py`  
     查看整个知识库的当前状态：段落/实体/关系条数、知识图节点/边数量、示例内容等。
@@ -33,6 +34,8 @@
     针对某个 OpenIE JSON 批次，检查它在向量库和知识图中的“残留情况”（导入与删除前后对比）。
   - `scripts/test_lpmm_retrieval.py`  
     使用几条预设问题测试 LPMM 检索能力，帮助你判断知识库是否正常工作。
+    - `scripts/refresh_lpmm_knowledge.py`  
+      手动重新加载 `data/embedding` 和 `data/rag` 到内存，用来确认当前磁盘上的 LPMM 知识库能正常初始化。
 
 > 注意：所有命令示例都假设你已经在虚拟环境中，命令行前缀类似 `(.venv)`，并且当前目录是项目根目录。
 
@@ -209,7 +212,7 @@
    ```bash
    .\.venv\Scripts\python.exe scripts/inspect_lpmm_batch.py ^
      --openie-file data/openie/<OPENIE>.json
-
+   
    .\.venv\Scripts\python.exe scripts/inspect_lpmm_global.py
    ```
 
@@ -346,7 +349,20 @@
 通过对比不同时间点的输出，你可以判断：
 
 - 某些知识是否已经被成功删除（不再出现在回答中）；
+
 - 新增的知识是否已经能被检索到。
+
+### 4.4 进阶：一键刷新（可选）
+
+- 想简单确认“现在这份 data/embedding + data/rag 是否健康”？执行：
+
+  `.\.venv\Scripts\python.exe scripts/refresh_lpmm_knowledge.py `
+
+  它会尝试初始化 LPMM，并打印当前段落/实体/关系条数和图大小。
+
+
+
+
 
 ---
 

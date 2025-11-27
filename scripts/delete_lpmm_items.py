@@ -354,6 +354,11 @@ def main():
     )
 
     logger.info("删除流程完成")
+    print(
+        "\n[NOTICE] 删除脚本执行完毕。如主程序（聊天 / WebUI）已在运行，"
+        "请重启主程序，或在主程序内部调用一次 lpmm_start_up() 以应用最新 LPMM 知识库。"
+    )
+    print("[NOTICE] 如果不清楚 lpmm_start_up 是什么，直接重启主程序即可。")
 
 
 if __name__ == "__main__":
