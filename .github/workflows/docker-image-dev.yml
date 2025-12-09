@@ -2,7 +2,7 @@ name: Docker Build and Push (Dev)
 
 on:
   schedule:
-    - cron:  "*/10 * * * *" # every 10 minutes
+    - cron: '*/10 * * * *' # every 10 minutes
   # push:
   #   branches:
   #     - dev
