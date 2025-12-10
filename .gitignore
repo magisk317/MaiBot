@@ -25,6 +25,7 @@ run_na.bat
 run_all_in_wt.bat
 run.bat
 log_debug/
+NapCat.Shell.Windows.OneKey
 run_amds.bat
 run_none.bat
 docs-mai/
@@ -334,3 +335,4 @@ config.toml
 interested_rates.txt
 MaiBot.code-workspace
 *.lock
+actionlint

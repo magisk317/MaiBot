@@ -2,30 +2,29 @@ import json
 from typing import List, Dict, Optional, Any
 
 from src.common.logger import get_logger
-from src.common.database.database_model import Jargon
 from src.config.config import global_config
 from src.chat.utils.chat_message_builder import (
     build_readable_messages,
-    build_readable_messages_with_id,
 )
 from src.chat.utils.utils import parse_platform_accounts
 
 
 logger = get_logger("jargon")
 
+
 def parse_chat_id_list(chat_id_value: Any) -> List[List[Any]]:
     """
     解析chat_id字段，兼容旧格式（字符串）和新格式（JSON列表）
-    
+
     Args:
         chat_id_value: 可能是字符串（旧格式）或JSON字符串（新格式）
-    
+
     Returns:
         List[List[Any]]: 格式为 [[chat_id, count], ...] 的列表
     """
     if not chat_id_value:
         return []
-    
+
     # 如果是字符串，尝试解析为JSON
     if isinstance(chat_id_value, str):
         # 尝试解析JSON
@@ -54,12 +53,12 @@ def parse_chat_id_list(chat_id_value: Any) -> List[List[Any]]:
 def update_chat_id_list(chat_id_list: List[List[Any]], target_chat_id: str, increment: int = 1) -> List[List[Any]]:
     """
     更新chat_id列表，如果target_chat_id已存在则增加计数，否则添加新条目
-    
+
     Args:
         chat_id_list: 当前的chat_id列表，格式为 [[chat_id, count], ...]
         target_chat_id: 要更新或添加的chat_id
         increment: 增加的计数，默认为1
-    
+
     Returns:
         List[List[Any]]: 更新后的chat_id列表
     """
@@ -74,22 +73,22 @@ def update_chat_id_list(chat_id_list: List[List[Any]], target_chat_id: str, incr
                 item.append(increment)
             found = True
             break
-    
+
     if not found:
         # 未找到，添加新条目
         chat_id_list.append([target_chat_id, increment])
-    
+
     return chat_id_list
 
 
 def chat_id_list_contains(chat_id_list: List[List[Any]], target_chat_id: str) -> bool:
     """
     检查chat_id列表中是否包含指定的chat_id
-    
+
     Args:
         chat_id_list: chat_id列表，格式为 [[chat_id, count], ...]
         target_chat_id: 要查找的chat_id
-    
+
     Returns:
         bool: 如果包含则返回True
     """
@@ -168,10 +167,7 @@ def is_bot_message(msg: Any) -> bool:
         .strip()
         .lower()
     )
-    user_id = (
-        str(getattr(msg, "user_id", "") or getattr(getattr(msg, "user_info", None), "user_id", "") or "")
-        .strip()
-    )
+    user_id = str(getattr(msg, "user_id", "") or getattr(getattr(msg, "user_info", None), "user_id", "") or "").strip()
 
     if not platform or not user_id:
         return False

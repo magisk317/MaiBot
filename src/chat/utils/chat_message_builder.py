@@ -959,7 +959,7 @@ async def build_anonymous_messages(messages: List[DatabaseMessages], show_ids: b
                 header = f"[{i + 1}] {anon_name}说 "
             else:
                 header = f"{anon_name}说 "
-                
+
             output_lines.append(header)
             stripped_line = content.strip()
             if stripped_line:

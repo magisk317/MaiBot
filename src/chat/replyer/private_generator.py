@@ -760,8 +760,6 @@ class PrivateReplyer:
                 continue
 
             timing_logs.append(f"{chinese_name}: {duration:.1f}s")
-            if duration > 12:
-                logger.warning(f"回复生成前信息获取耗时过长: {chinese_name} 耗时: {duration:.1f}s，请使用更快的模型")
         logger.info(f"回复准备: {'; '.join(timing_logs)}; {almost_zero_str} <0.1s")
 
         expression_habits_block, selected_expressions = results_dict["expression_habits"]

@@ -97,7 +97,7 @@ def _compute_weights(population: List[Dict]) -> List[float]:
 
     # 如果checked，权重乘以3
     weights = []
-    for base_weight, checked in zip(base_weights, checked_flags):
+    for base_weight, checked in zip(base_weights, checked_flags, strict=False):
         if checked:
             weights.append(base_weight * 3.0)
         else:

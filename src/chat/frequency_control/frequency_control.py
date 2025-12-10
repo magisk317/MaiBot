@@ -1,5 +1,6 @@
 from datetime import datetime
 import time
+import asyncio
 from typing import Dict
 
 from src.chat.utils.chat_message_builder import (
@@ -46,6 +47,8 @@ class FrequencyControl:
         self.frequency_model = LLMRequest(
             model_set=model_config.model_task_config.utils_small, request_type="frequency.adjust"
         )
+        # 频率调整锁，防止并发执行
+        self._adjust_lock = asyncio.Lock()
 
     def get_talk_frequency_adjust(self) -> float:
         """获取发言频率调整值"""
@@ -56,68 +59,78 @@ class FrequencyControl:
         self.talk_frequency_adjust = max(0.1, min(5.0, value))
 
     async def trigger_frequency_adjust(self) -> None:
-        msg_list = get_raw_msg_by_timestamp_with_chat(
-            chat_id=self.chat_id,
-            timestamp_start=self.last_frequency_adjust_time,
-            timestamp_end=time.time(),
-        )
-
-        if time.time() - self.last_frequency_adjust_time < 160 or len(msg_list) <= 20:
-            return
-        else:
-            new_msg_list = get_raw_msg_by_timestamp_with_chat(
+        # 使用异步锁防止并发执行
+        async with self._adjust_lock:
+            # 在锁内检查，避免并发触发
+            current_time = time.time()
+            previous_adjust_time = self.last_frequency_adjust_time
+            
+            msg_list = get_raw_msg_by_timestamp_with_chat(
                 chat_id=self.chat_id,
-                timestamp_start=self.last_frequency_adjust_time,
-                timestamp_end=time.time(),
-                limit=20,
-                limit_mode="latest",
+                timestamp_start=previous_adjust_time,
+                timestamp_end=current_time,
             )
 
-            message_str = build_readable_messages(
-                new_msg_list,
-                replace_bot_name=True,
-                timestamp_mode="relative",
-                read_mark=0.0,
-                show_actions=False,
-            )
-            time_block = f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            bot_name = global_config.bot.nickname
-            bot_nickname = (
-                f",也有人叫你{','.join(global_config.bot.alias_names)}" if global_config.bot.alias_names else ""
-            )
-            name_block = f"你的名字是{bot_name}{bot_nickname}，请注意哪些是你自己的发言。"
+            if current_time - previous_adjust_time < 160 or len(msg_list) <= 20:
+                return
 
-            prompt = await global_prompt_manager.format_prompt(
-                "frequency_adjust_prompt",
-                name_block=name_block,
-                time_block=time_block,
-                message_str=message_str,
-            )
-            response, (reasoning_content, _, _) = await self.frequency_model.generate_response_async(
-                prompt,
-            )
+            # 立即更新调整时间，防止并发触发
+            self.last_frequency_adjust_time = current_time
 
-            # logger.info(f"频率调整 prompt: {prompt}")
-            # logger.info(f"频率调整 response: {response}")
+            try:
+                new_msg_list = get_raw_msg_by_timestamp_with_chat(
+                    chat_id=self.chat_id,
+                    timestamp_start=previous_adjust_time,
+                    timestamp_end=current_time,
+                    limit=20,
+                    limit_mode="latest",
+                )
 
-            if global_config.debug.show_prompt:
-                logger.info(f"频率调整 prompt: {prompt}")
-                logger.info(f"频率调整 response: {response}")
-                logger.info(f"频率调整 reasoning_content: {reasoning_content}")
+                message_str = build_readable_messages(
+                    new_msg_list,
+                    replace_bot_name=True,
+                    timestamp_mode="relative",
+                    read_mark=0.0,
+                    show_actions=False,
+                )
+                time_block = f"当前时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                bot_name = global_config.bot.nickname
+                bot_nickname = (
+                    f",也有人叫你{','.join(global_config.bot.alias_names)}" if global_config.bot.alias_names else ""
+                )
+                name_block = f"你的名字是{bot_name}{bot_nickname}，请注意哪些是你自己的发言。"
 
-            final_value_by_api = frequency_api.get_current_talk_value(self.chat_id)
+                prompt = await global_prompt_manager.format_prompt(
+                    "frequency_adjust_prompt",
+                    name_block=name_block,
+                    time_block=time_block,
+                    message_str=message_str,
+                )
+                response, (reasoning_content, _, _) = await self.frequency_model.generate_response_async(
+                    prompt,
+                )
 
-            # LLM依然输出过多内容时取消本次调整。合法最多4个字，但有的模型可能会输出一些markdown换行符等，需要长度宽限
-            if len(response) < 20:
-                if "过于频繁" in response:
-                    logger.info(f"频率调整: 过于频繁，调整值到{final_value_by_api}")
-                    self.talk_frequency_adjust = max(0.1, min(1.5, self.talk_frequency_adjust * 0.8))
-                elif "过少" in response:
-                    logger.info(f"频率调整: 过少，调整值到{final_value_by_api}")
-                    self.talk_frequency_adjust = max(0.1, min(1.5, self.talk_frequency_adjust * 1.2))
-                self.last_frequency_adjust_time = time.time()
-            else:
-                logger.info("频率调整：response不符合要求，取消本次调整")
+                # logger.info(f"频率调整 prompt: {prompt}")
+                # logger.info(f"频率调整 response: {response}")
+
+                if global_config.debug.show_prompt:
+                    logger.info(f"频率调整 prompt: {prompt}")
+                    logger.info(f"频率调整 response: {response}")
+                    logger.info(f"频率调整 reasoning_content: {reasoning_content}")
+
+                final_value_by_api = frequency_api.get_current_talk_value(self.chat_id)
+
+                # LLM依然输出过多内容时取消本次调整。合法最多4个字，但有的模型可能会输出一些markdown换行符等，需要长度宽限
+                if len(response) < 20:
+                    if "过于频繁" in response:
+                        logger.info(f"频率调整: 过于频繁，调整值到{final_value_by_api}")
+                        self.talk_frequency_adjust = max(0.1, min(1.5, self.talk_frequency_adjust * 0.8))
+                    elif "过少" in response:
+                        logger.info(f"频率调整: 过少，调整值到{final_value_by_api}")
+                        self.talk_frequency_adjust = max(0.1, min(1.5, self.talk_frequency_adjust * 1.2))
+            except Exception as e:
+                logger.error(f"频率调整失败: {e}")
+                # 即使失败也保持时间戳更新，避免频繁重试
 
 
 class FrequencyControlManager:

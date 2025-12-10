@@ -128,7 +128,7 @@ class ExpressionSelector:
 
             # 优化：一次性查询所有相关chat_id的表达方式，排除 rejected=1 的表达
             style_query = Expression.select().where(
-                (Expression.chat_id.in_(related_chat_ids)) & (Expression.rejected == False)
+                (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected)
             )
 
             style_exprs = [
@@ -151,7 +151,6 @@ class ExpressionSelector:
             else:
                 selected_style = []
 
-            logger.info(f"随机选择，为聊天室 {chat_id} 选择了 {len(selected_style)} 个表达方式")
             return selected_style
 
         except Exception as e:
@@ -294,7 +293,7 @@ class ExpressionSelector:
             if valid_expressions:
                 self.update_expressions_last_active_time(valid_expressions)
 
-            logger.info(f"classic模式从{len(all_expressions)}个情境中选择了{len(valid_expressions)}个")
+            logger.debug(f"从{len(all_expressions)}个情境中选择了{len(valid_expressions)}个")
             return valid_expressions, selected_ids
 
         except Exception as e:

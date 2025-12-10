@@ -44,9 +44,7 @@ class JargonExplainer:
             request_type="jargon.explain",
         )
 
-    def match_jargon_from_messages(
-        self, messages: List[Any]
-    ) -> List[Dict[str, str]]:
+    def match_jargon_from_messages(self, messages: List[Any]) -> List[Dict[str, str]]:
         """
         通过直接匹配数据库中的jargon字符串来提取黑话
 
@@ -57,7 +55,7 @@ class JargonExplainer:
             List[Dict[str, str]]: 提取到的黑话列表，每个元素包含content
         """
         start_time = time.time()
-        
+
         if not messages:
             return []
 
@@ -67,8 +65,10 @@ class JargonExplainer:
             # 跳过机器人自己的消息
             if is_bot_message(msg):
                 continue
-            
-            msg_text = (getattr(msg, "display_message", None) or getattr(msg, "processed_plain_text", None) or "").strip()
+
+            msg_text = (
+                getattr(msg, "display_message", None) or getattr(msg, "processed_plain_text", None) or ""
+            ).strip()
             if msg_text:
                 message_texts.append(msg_text)
 
@@ -79,9 +79,7 @@ class JargonExplainer:
         combined_text = " ".join(message_texts)
 
         # 查询所有有meaning的jargon记录
-        query = Jargon.select().where(
-            (Jargon.meaning.is_null(False)) & (Jargon.meaning != "")
-        )
+        query = Jargon.select().where((Jargon.meaning.is_null(False)) & (Jargon.meaning != ""))
 
         # 根据all_global配置决定查询逻辑
         if global_config.jargon.all_global:
@@ -98,7 +96,7 @@ class JargonExplainer:
         # 执行查询并匹配
         matched_jargon: Dict[str, Dict[str, str]] = {}
         query_time = time.time()
-        
+
         for jargon in query:
             content = jargon.content or ""
             if not content or not content.strip():
@@ -123,13 +121,13 @@ class JargonExplainer:
             pattern = re.escape(content)
             # 使用单词边界或中文字符边界来匹配，避免部分匹配
             # 对于中文，使用Unicode字符类；对于英文，使用单词边界
-            if re.search(r'[\u4e00-\u9fff]', content):
+            if re.search(r"[\u4e00-\u9fff]", content):
                 # 包含中文，使用更宽松的匹配
                 search_pattern = pattern
             else:
                 # 纯英文/数字，使用单词边界
-                search_pattern = r'\b' + pattern + r'\b'
-            
+                search_pattern = r"\b" + pattern + r"\b"
+
             if re.search(search_pattern, combined_text, re.IGNORECASE):
                 # 找到匹配，记录（去重）
                 if content not in matched_jargon:
@@ -139,17 +137,15 @@ class JargonExplainer:
         total_time = match_time - start_time
         query_duration = query_time - start_time
         match_duration = match_time - query_time
-        
-        logger.info(
+
+        logger.debug(
             f"黑话匹配完成: 查询耗时 {query_duration:.3f}s, 匹配耗时 {match_duration:.3f}s, "
             f"总耗时 {total_time:.3f}s, 匹配到 {len(matched_jargon)} 个黑话"
         )
 
         return list(matched_jargon.values())
 
-    async def explain_jargon(
-        self, messages: List[Any], chat_context: str
-    ) -> Optional[str]:
+    async def explain_jargon(self, messages: List[Any], chat_context: str) -> Optional[str]:
         """
         解释上下文中的黑话
 
@@ -183,7 +179,7 @@ class JargonExplainer:
         jargon_explanations: List[str] = []
         for entry in jargon_list:
             content = entry["content"]
-            
+
             # 根据是否开启全局黑话，决定查询方式
             if global_config.jargon.all_global:
                 # 开启全局黑话：查询所有is_global=True的记录
@@ -239,9 +235,7 @@ class JargonExplainer:
         return summary
 
 
-async def explain_jargon_in_context(
-    chat_id: str, messages: List[Any], chat_context: str
-) -> Optional[str]:
+async def explain_jargon_in_context(chat_id: str, messages: List[Any], chat_context: str) -> Optional[str]:
     """
     解释上下文中的黑话（便捷函数）
 
@@ -256,3 +250,111 @@ async def explain_jargon_in_context(
     explainer = JargonExplainer(chat_id)
     return await explainer.explain_jargon(messages, chat_context)
 
+
+def match_jargon_from_text(chat_text: str, chat_id: str) -> List[str]:
+    """直接在聊天文本中匹配已知的jargon，返回出现过的黑话列表
+
+    Args:
+        chat_text: 要匹配的聊天文本
+        chat_id: 聊天ID
+
+    Returns:
+        List[str]: 匹配到的黑话列表
+    """
+    if not chat_text or not chat_text.strip():
+        return []
+
+    query = Jargon.select().where((Jargon.meaning.is_null(False)) & (Jargon.meaning != ""))
+    if global_config.jargon.all_global:
+        query = query.where(Jargon.is_global)
+
+    query = query.order_by(Jargon.count.desc())
+
+    matched: Dict[str, None] = {}
+
+    for jargon in query:
+        content = (jargon.content or "").strip()
+        if not content:
+            continue
+
+        if not global_config.jargon.all_global and not jargon.is_global:
+            chat_id_list = parse_chat_id_list(jargon.chat_id)
+            if not chat_id_list_contains(chat_id_list, chat_id):
+                continue
+
+        pattern = re.escape(content)
+        if re.search(r"[\u4e00-\u9fff]", content):
+            search_pattern = pattern
+        else:
+            search_pattern = r"\b" + pattern + r"\b"
+
+        if re.search(search_pattern, chat_text, re.IGNORECASE):
+            matched[content] = None
+
+    logger.info(f"匹配到 {len(matched)} 个黑话")
+
+    return list(matched.keys())
+
+
+async def retrieve_concepts_with_jargon(concepts: List[str], chat_id: str) -> str:
+    """对概念列表进行jargon检索
+
+    Args:
+        concepts: 概念列表
+        chat_id: 聊天ID
+
+    Returns:
+        str: 检索结果字符串
+    """
+    if not concepts:
+        return ""
+
+    results = []
+    exact_matches = []  # 收集所有精确匹配的概念
+    for concept in concepts:
+        concept = concept.strip()
+        if not concept:
+            continue
+
+        # 先尝试精确匹配
+        jargon_results = search_jargon(keyword=concept, chat_id=chat_id, limit=10, case_sensitive=False, fuzzy=False)
+
+        is_fuzzy_match = False
+
+        # 如果精确匹配未找到，尝试模糊搜索
+        if not jargon_results:
+            jargon_results = search_jargon(keyword=concept, chat_id=chat_id, limit=10, case_sensitive=False, fuzzy=True)
+            is_fuzzy_match = True
+
+        if jargon_results:
+            # 找到结果
+            if is_fuzzy_match:
+                # 模糊匹配
+                output_parts = [f"未精确匹配到'{concept}'"]
+                for result in jargon_results:
+                    found_content = result.get("content", "").strip()
+                    meaning = result.get("meaning", "").strip()
+                    if found_content and meaning:
+                        output_parts.append(f"找到 '{found_content}' 的含义为：{meaning}")
+                results.append("，".join(output_parts))
+                logger.info(f"在jargon库中找到匹配（模糊搜索）: {concept}，找到{len(jargon_results)}条结果")
+            else:
+                # 精确匹配
+                output_parts = []
+                for result in jargon_results:
+                    meaning = result.get("meaning", "").strip()
+                    if meaning:
+                        output_parts.append(f"'{concept}' 为黑话或者网络简写，含义为：{meaning}")
+                results.append("；".join(output_parts) if len(output_parts) > 1 else output_parts[0])
+                exact_matches.append(concept)  # 收集精确匹配的概念，稍后统一打印
+        else:
+            # 未找到，不返回占位信息，只记录日志
+            logger.info(f"在jargon库中未找到匹配: {concept}")
+
+    # 合并所有精确匹配的日志
+    if exact_matches:
+        logger.info(f"找到黑话: {', '.join(exact_matches)}，共找到{len(exact_matches)}条结果")
+
+    if results:
+        return "【概念检索结果】\n" + "\n".join(results) + "\n"
+    return ""

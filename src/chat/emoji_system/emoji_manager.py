@@ -356,7 +356,7 @@ async def clean_unused_emojis(emoji_dir: str, emoji_objects: List["MaiEmoji"], r
         if cleaned_count > 0:
             logger.info(f"[清理] 在目录 {emoji_dir} 中清理了 {cleaned_count} 个破损表情包。")
         else:
-            logger.info(f"[清理] 目录 {emoji_dir} 中没有需要清理的。")
+            logger.debug(f"[清理] 目录 {emoji_dir} 中没有需要清理的。")
 
     except Exception as e:
         logger.error(f"[错误] 清理未使用表情包文件时出错 ({emoji_dir}): {str(e)}")

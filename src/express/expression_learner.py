@@ -2,6 +2,7 @@ import time
 import json
 import os
 import re
+import asyncio
 from typing import List, Optional, Tuple
 import traceback
 from src.common.logger import get_logger
@@ -91,6 +92,9 @@ class ExpressionLearner:
         # 维护每个chat的上次学习时间
         self.last_learning_time: float = time.time()
 
+        # 学习锁，防止并发执行学习任务
+        self._learning_lock = asyncio.Lock()
+
         # 学习参数
         _, self.enable_learning, self.learning_intensity = global_config.expression.get_expression_config_for_chat(
             self.chat_id
@@ -139,32 +143,45 @@ class ExpressionLearner:
         Returns:
             bool: 是否成功触发学习
         """
-        if not self.should_trigger_learning():
-            return
+        # 使用异步锁防止并发执行
+        async with self._learning_lock:
+            # 在锁内检查，避免并发触发
+            # 如果锁被持有，其他协程会等待，但等待期间条件可能已变化，所以需要再次检查
+            if not self.should_trigger_learning():
+                return
 
-        try:
-            logger.info(f"在聊天流 {self.chat_name} 学习表达方式")
-            # 学习语言风格
-            learnt_style = await self.learn_and_store(num=25)
+            # 保存学习开始前的时间戳，用于获取消息范围
+            learning_start_timestamp = time.time()
+            previous_learning_time = self.last_learning_time
+            
+            # 立即更新学习时间，防止并发触发
+            self.last_learning_time = learning_start_timestamp
 
-            # 更新学习时间
-            self.last_learning_time = time.time()
+            try:
+                logger.info(f"在聊天流 {self.chat_name} 学习表达方式")
+                # 学习语言风格，传递学习开始前的时间戳
+                learnt_style = await self.learn_and_store(num=25, timestamp_start=previous_learning_time)
 
-            if learnt_style:
-                logger.info(f"聊天流 {self.chat_name} 表达学习完成")
-            else:
-                logger.warning(f"聊天流 {self.chat_name} 表达学习未获得有效结果")
+                if learnt_style:
+                    logger.info(f"聊天流 {self.chat_name} 表达学习完成")
+                else:
+                    logger.warning(f"聊天流 {self.chat_name} 表达学习未获得有效结果")
 
-        except Exception as e:
-            logger.error(f"为聊天流 {self.chat_name} 触发学习失败: {e}")
-            traceback.print_exc()
-            return
+            except Exception as e:
+                logger.error(f"为聊天流 {self.chat_name} 触发学习失败: {e}")
+                traceback.print_exc()
+                # 即使失败也保持时间戳更新，避免频繁重试
+                return
 
-    async def learn_and_store(self, num: int = 10) -> List[Tuple[str, str, str]]:
+    async def learn_and_store(self, num: int = 10, timestamp_start: Optional[float] = None) -> List[Tuple[str, str, str]]:
         """
         学习并存储表达方式
+        
+        Args:
+            num: 学习数量
+            timestamp_start: 学习开始的时间戳，如果为None则使用self.last_learning_time
         """
-        learnt_expressions = await self.learn_expression(num)
+        learnt_expressions = await self.learn_expression(num, timestamp_start=timestamp_start)
 
         if learnt_expressions is None:
             logger.info("没有学习到表达风格")
@@ -226,19 +243,19 @@ class ExpressionLearner:
         match_responses = []
         try:
             response = response.strip()
-            
+
             # 尝试提取JSON代码块（如果存在）
             json_pattern = r"```json\s*(.*?)\s*```"
             matches = re.findall(json_pattern, response, re.DOTALL)
             if matches:
                 response = matches[0].strip()
-            
+
             # 移除可能的markdown代码块标记（如果没有找到```json，但可能有```）
             if not matches:
                 response = re.sub(r"^```\s*", "", response, flags=re.MULTILINE)
                 response = re.sub(r"```\s*$", "", response, flags=re.MULTILINE)
                 response = response.strip()
-            
+
             # 检查是否已经是标准JSON数组格式
             if response.startswith("[") and response.endswith("]"):
                 match_responses = json.loads(response)
@@ -374,18 +391,22 @@ class ExpressionLearner:
 
         return matched_expressions
 
-    async def learn_expression(self, num: int = 10) -> Optional[List[Tuple[str, str, str, str]]]:
+    async def learn_expression(self, num: int = 10, timestamp_start: Optional[float] = None) -> Optional[List[Tuple[str, str, str, str]]]:
         """从指定聊天流学习表达方式
 
         Args:
             num: 学习数量
+            timestamp_start: 学习开始的时间戳，如果为None则使用self.last_learning_time
         """
         current_time = time.time()
+        
+        # 使用传入的时间戳，如果没有则使用self.last_learning_time
+        start_timestamp = timestamp_start if timestamp_start is not None else self.last_learning_time
 
         # 获取上次学习之后的消息
         random_msg = get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
-            timestamp_start=self.last_learning_time,
+            timestamp_start=start_timestamp,
             timestamp_end=current_time,
             limit=num,
         )

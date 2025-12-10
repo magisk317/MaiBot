@@ -33,6 +33,11 @@ class MessageStorage:
     async def store_message(message: Union[MessageSending, MessageRecv], chat_stream: ChatStream) -> None:
         """存储消息到数据库"""
         try:
+            # 通知消息不存储
+            if isinstance(message, MessageRecv) and message.is_notify:
+                logger.debug("通知消息，跳过存储")
+                return
+
             pattern = r"<MainRule>.*?</MainRule>|<schedule>.*?</schedule>|<UserMessage>.*?</UserMessage>"
 
             # print(message)

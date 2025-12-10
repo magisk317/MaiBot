@@ -29,7 +29,7 @@ from src.chat.utils.chat_message_builder import (
     build_readable_messages_with_id,
     get_raw_msg_before_timestamp_with_chat,
 )
-from src.chat.utils.chat_history_summarizer import ChatHistorySummarizer
+from src.hippo_memorizer.chat_history_summarizer import ChatHistorySummarizer
 
 if TYPE_CHECKING:
     from src.common.data_models.database_data_model import DatabaseMessages
@@ -400,7 +400,7 @@ class HeartFChatting:
         # ReflectTracker Check
         # 在每次回复前检查一次上下文，看是否有反思问题得到了解答
         # -------------------------------------------------------------------------
-        
+
         reflector = expression_reflector_manager.get_or_create_reflector(self.stream_id)
         await reflector.check_and_ask()
         tracker = reflect_tracker_manager.get_tracker(self.stream_id)
@@ -409,7 +409,6 @@ class HeartFChatting:
             if resolved:
                 reflect_tracker_manager.remove_tracker(self.stream_id)
                 logger.info(f"{self.log_prefix} ReflectTracker resolved and removed.")
-
 
         start_time = time.time()
         async with global_prompt_manager.async_message_scope(self.chat_stream.context.get_template_name()):
@@ -427,7 +426,9 @@ class HeartFChatting:
             # asyncio.create_task(self.chat_history_summarizer.process())
 
             cycle_timers, thinking_id = self.start_cycle()
-            logger.info(f"{self.log_prefix} 开始第{self._cycle_counter}次思考(频率: {global_config.chat.get_talk_value(self.stream_id)})")
+            logger.info(
+                f"{self.log_prefix} 开始第{self._cycle_counter}次思考(频率: {global_config.chat.get_talk_value(self.stream_id)})"
+            )
 
             # 第一步：动作检查
             available_actions: Dict[str, ActionInfo] = {}

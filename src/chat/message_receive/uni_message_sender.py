@@ -15,12 +15,72 @@ install(extra_lines=3)
 
 logger = get_logger("sender")
 
+# WebUI 聊天室的消息广播器（延迟导入避免循环依赖）
+_webui_chat_broadcaster = None
+
+# 虚拟群 ID 前缀（与 chat_routes.py 保持一致）
+VIRTUAL_GROUP_ID_PREFIX = "webui_virtual_group_"
+
+
+def get_webui_chat_broadcaster():
+    """获取 WebUI 聊天室广播器"""
+    global _webui_chat_broadcaster
+    if _webui_chat_broadcaster is None:
+        try:
+            from src.webui.chat_routes import chat_manager, WEBUI_CHAT_PLATFORM
+
+            _webui_chat_broadcaster = (chat_manager, WEBUI_CHAT_PLATFORM)
+        except ImportError:
+            _webui_chat_broadcaster = (None, None)
+    return _webui_chat_broadcaster
+
+
+def is_webui_virtual_group(group_id: str) -> bool:
+    """检查是否是 WebUI 虚拟群"""
+    return group_id and group_id.startswith(VIRTUAL_GROUP_ID_PREFIX)
+
 
 async def _send_message(message: MessageSending, show_log=True) -> bool:
     """合并后的消息发送函数，包含WS发送和日志记录"""
     message_preview = truncate_message(message.processed_plain_text, max_length=200)
+    platform = message.message_info.platform
+    group_id = message.message_info.group_info.group_id if message.message_info.group_info else None
 
     try:
+        # 检查是否是 WebUI 平台的消息，或者是 WebUI 虚拟群的消息
+        chat_manager, webui_platform = get_webui_chat_broadcaster()
+        is_webui_message = (platform == webui_platform) or is_webui_virtual_group(group_id)
+        
+        if is_webui_message and chat_manager is not None:
+            # WebUI 聊天室消息（包括虚拟身份模式），通过 WebSocket 广播
+            import time
+            from src.config.config import global_config
+
+            await chat_manager.broadcast(
+                {
+                    "type": "bot_message",
+                    "content": message.processed_plain_text,
+                    "message_type": "text",
+                    "timestamp": time.time(),
+                    "group_id": group_id,  # 包含群 ID 以便前端区分不同的聊天标签
+                    "sender": {
+                        "name": global_config.bot.nickname,
+                        "avatar": None,
+                        "is_bot": True,
+                    },
+                }
+            )
+
+            # 注意：机器人消息会由 MessageStorage.store_message 自动保存到数据库
+            # 无需手动保存
+
+            if show_log:
+                if is_webui_virtual_group(group_id):
+                    logger.info(f"已将消息  '{message_preview}'  发往 WebUI 虚拟群 (平台: {platform})")
+                else:
+                    logger.info(f"已将消息  '{message_preview}'  发往 WebUI 聊天室")
+            return True
+
         # 直接调用API发送消息
         await get_global_api().send_message(message)
         if show_log:

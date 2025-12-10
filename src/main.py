@@ -56,7 +56,7 @@ class MainSystem:
             from src.webui.webui_server import get_webui_server
 
             self.webui_server = get_webui_server()
-            
+
             if webui_mode == "development":
                 logger.info("📝 WebUI 开发模式已启用")
                 logger.info("🌐 后端 API 将运行在 http://0.0.0.0:8001")
@@ -64,9 +64,9 @@ class MainSystem:
                 logger.info("💡 前端将运行在 http://localhost:7999")
             else:
                 logger.info("✅ WebUI 生产模式已启用")
-                logger.info(f"🌐 WebUI 将运行在 http://0.0.0.0:8001")
+                logger.info("🌐 WebUI 将运行在 http://0.0.0.0:8001")
                 logger.info("💡 请确保已构建前端: cd MaiBot-Dashboard && bun run build")
-                
+
         except Exception as e:
             logger.error(f"❌ 初始化 WebUI 服务器失败: {e}")
 
