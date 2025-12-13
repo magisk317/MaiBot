@@ -1401,12 +1401,34 @@ async def get_plugin_config_schema(
                     # 推断字段类型
                     field_type = type(field_value).__name__
                     ui_type = "text"
+                    item_type = None
+                    item_fields = None
+                    
                     if isinstance(field_value, bool):
                         ui_type = "switch"
                     elif isinstance(field_value, (int, float)):
                         ui_type = "number"
                     elif isinstance(field_value, list):
                         ui_type = "list"
+                        # 推断数组元素类型
+                        if field_value:
+                            first_item = field_value[0]
+                            if isinstance(first_item, dict):
+                                item_type = "object"
+                                # 从第一个元素推断字段结构
+                                item_fields = {}
+                                for k, v in first_item.items():
+                                    item_fields[k] = {
+                                        "type": "number" if isinstance(v, (int, float)) else "string",
+                                        "label": k,
+                                        "default": "" if isinstance(v, str) else 0,
+                                    }
+                            elif isinstance(first_item, (int, float)):
+                                item_type = "number"
+                            else:
+                                item_type = "string"
+                        else:
+                            item_type = "string"
                     elif isinstance(field_value, dict):
                         ui_type = "json"
 
@@ -1421,6 +1443,26 @@ async def get_plugin_config_schema(
                         "hidden": False,
                         "disabled": False,
                         "order": 0,
+                        "item_type": item_type,
+                        "item_fields": item_fields,
+                        "min_items": None,
+                        "max_items": None,
+                        # 补充缺失的字段
+                        "placeholder": None,
+                        "hint": None,
+                        "icon": None,
+                        "example": None,
+                        "choices": None,
+                        "min": None,
+                        "max": None,
+                        "step": None,
+                        "pattern": None,
+                        "max_length": None,
+                        "input_type": None,
+                        "rows": 3,
+                        "group": None,
+                        "depends_on": None,
+                        "depends_value": None,
                     }
 
         return {"success": True, "schema": schema}
