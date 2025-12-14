@@ -3,7 +3,7 @@ import json
 import os
 import re
 import asyncio
-from typing import List, Optional, Tuple, Any, Dict
+from typing import List, Optional, Tuple, Any, Dict, Callable
 from src.common.logger import get_logger
 from src.common.database.database_model import Expression
 from src.llm_models.utils_model import LLMRequest
@@ -97,14 +97,14 @@ class ExpressionLearner:
     async def learn_and_store(
         self, 
         messages: List[Any],
+        person_name_filter: Optional[Callable[[str], bool]] = None,
     ) -> List[Tuple[str, str, str]]:
         """
         学习并存储表达方式
         
         Args:
             messages: 外部传入的消息列表（必需）
-            num: 学习数量
-            timestamp_start: 学习开始的时间戳，如果为None则使用self.last_learning_time
+            person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
         """
         if not messages:
             return None
@@ -135,6 +135,17 @@ class ExpressionLearner:
         expressions, jargon_entries = self.parse_expression_response(response)
         expressions = self._filter_self_reference_styles(expressions)
         
+        # 过滤掉包含人物名称的表达方式
+        if person_name_filter:
+            filtered_expressions = []
+            for situation, style, source_id in expressions:
+                # 检查 situation 和 style 是否包含人物名称
+                if person_name_filter(situation) or person_name_filter(style):
+                    logger.info(f"跳过包含人物名称的表达方式: situation={situation}, style={style}")
+                    continue
+                filtered_expressions.append((situation, style, source_id))
+            expressions = filtered_expressions
+        
         # 检查表达方式数量，如果超过10个则放弃本次表达学习
         if len(expressions) > 10:
             logger.info(f"表达方式提取数量超过10个（实际{len(expressions)}个），放弃本次表达学习")
@@ -147,7 +158,7 @@ class ExpressionLearner:
         
         # 处理黑话条目，路由到 jargon_miner（即使没有表达方式也要处理黑话）
         if jargon_entries:
-            await self._process_jargon_entries(jargon_entries, random_msg)
+            await self._process_jargon_entries(jargon_entries, random_msg, person_name_filter)
         
         # 如果没有表达方式，直接返回
         if not expressions:
@@ -500,13 +511,19 @@ class ExpressionLearner:
             logger.error(f"概括表达情境失败: {e}")
         return None
 
-    async def _process_jargon_entries(self, jargon_entries: List[Tuple[str, str]], messages: List[Any]) -> None:
+    async def _process_jargon_entries(
+        self, 
+        jargon_entries: List[Tuple[str, str]], 
+        messages: List[Any],
+        person_name_filter: Optional[Callable[[str], bool]] = None
+    ) -> None:
         """
         处理从 expression learner 提取的黑话条目，路由到 jargon_miner
         
         Args:
             jargon_entries: 黑话条目列表，每个元素是 (content, source_id)
             messages: 消息列表，用于构建上下文
+            person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
         """
         if not jargon_entries or not messages:
             return
@@ -525,6 +542,11 @@ class ExpressionLearner:
             # 检查是否包含机器人名称
             if contains_bot_self_name(content):
                 logger.info(f"跳过包含机器人昵称/别名的黑话: {content}")
+                continue
+            
+            # 检查是否包含人物名称
+            if person_name_filter and person_name_filter(content):
+                logger.info(f"跳过包含人物名称的黑话: {content}")
                 continue
             
             # 解析 source_id
@@ -557,7 +579,7 @@ class ExpressionLearner:
             return
         
         # 调用 jargon_miner 处理这些条目
-        await jargon_miner.process_extracted_entries(entries)
+        await jargon_miner.process_extracted_entries(entries, person_name_filter)
 
 
 init_prompt()

@@ -36,7 +36,7 @@ def init_replyer_prompt():
 {reply_target_block}。
 {planner_reasoning}
 {identity}
-{chat_prompt}你正在群里聊天,现在请你读读之前的聊天记录，把握当前的话题，然后给出口语化回复，
+{chat_prompt}你正在群里聊天,现在请你读读之前的聊天记录，把握当前的话题，然后给出日常且简短的回复，。
 {keywords_reaction_prompt}
 请注意把握聊天内容。
 {reply_style}

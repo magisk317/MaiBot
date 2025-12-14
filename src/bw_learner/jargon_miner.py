@@ -3,7 +3,7 @@ import json
 import asyncio
 import random
 from collections import OrderedDict
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Callable
 from json_repair import repair_json
 from peewee import fn
 
@@ -478,12 +478,17 @@ class JargonMiner:
 
             traceback.print_exc()
 
-    async def run_once(self, messages: List[Any]) -> None:
+    async def run_once(
+        self, 
+        messages: List[Any],
+        person_name_filter: Optional[Callable[[str], bool]] = None
+    ) -> None:
         """
         运行一次黑话提取
         
         Args:
             messages: 外部传入的消息列表（必需）
+            person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
         """
         # 使用异步锁防止并发执行
         async with self._extraction_lock:
@@ -561,6 +566,11 @@ class JargonMiner:
 
                         if contains_bot_self_name(content):
                             logger.info(f"解析阶段跳过包含机器人昵称/别名的词条: {content}")
+                            continue
+                        
+                        # 检查是否包含人物名称
+                        if person_name_filter and person_name_filter(content):
+                            logger.info(f"解析阶段跳过包含人物名称的词条: {content}")
                             continue
 
                         msg_id_str = str(msg_id_value or "").strip()
@@ -723,12 +733,17 @@ class JargonMiner:
                 logger.error(f"JargonMiner 运行失败: {e}")
                 # 即使失败也保持时间戳更新，避免频繁重试
 
-    async def process_extracted_entries(self, entries: List[Dict[str, List[str]]]) -> None:
+    async def process_extracted_entries(
+        self, 
+        entries: List[Dict[str, List[str]]],
+        person_name_filter: Optional[Callable[[str], bool]] = None
+    ) -> None:
         """
         处理已提取的黑话条目（从 expression_learner 路由过来的）
         
         Args:
             entries: 黑话条目列表，每个元素格式为 {"content": "...", "raw_content": [...]}
+            person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
         """
         if not entries:
             return
@@ -738,6 +753,14 @@ class JargonMiner:
             merged_entries: OrderedDict[str, Dict[str, List[str]]] = OrderedDict()
             for entry in entries:
                 content_key = entry["content"]
+                
+                # 检查是否包含人物名称
+                logger.info(f"process_extracted_entries 检查是否包含人物名称: {content_key}")
+                logger.info(f"person_name_filter: {person_name_filter}")
+                if person_name_filter and person_name_filter(content_key):
+                    logger.info(f"process_extracted_entries 跳过包含人物名称的黑话: {content_key}")
+                    continue
+                
                 raw_list = entry.get("raw_content", []) or []
                 if content_key in merged_entries:
                     merged_entries[content_key]["raw_content"].extend(raw_list)
