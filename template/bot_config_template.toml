@@ -232,15 +232,16 @@ show_planner_prompt = false # 是否显示planner的prompt和原始返回结果
 show_lpmm_paragraph = false # 是否显示lpmm找到的相关文段日志
 
 [maim_message]
-auth_token = [] # 认证令牌，用于API验证，为空则不启用验证
-# 以下项目若要使用需要打开use_custom，并单独配置maim_message的服务器
-use_custom = false # 是否启用自定义的maim_message服务器，注意这需要设置新的端口，不能与.env重复
-host="127.0.0.1"
-port=8090
-mode="ws" # 支持ws和tcp两种模式
-use_wss = false # 是否使用WSS安全连接，只支持ws模式
-cert_file = "" # SSL证书文件路径，仅在use_wss=true时有效
-key_file = "" # SSL密钥文件路径，仅在use_wss=true时有效
+auth_token = [] # 认证令牌，用于旧版API验证，为空则不启用验证
+
+# 新版API Server配置（额外监听端口）
+enable_api_server = false # 是否启用额外的新版API Server
+api_server_host = "0.0.0.0" # 新版API Server主机地址
+api_server_port = 8090 # 新版API Server端口号
+api_server_use_wss = false # 新版API Server是否启用WSS
+api_server_cert_file = "" # 新版API Server SSL证书文件路径
+api_server_key_file = "" # 新版API Server SSL密钥文件路径
+api_server_allowed_api_keys = [] # 新版API Server允许的API Key列表，为空则允许所有连接
 
 [telemetry] #发送统计信息，主要是看全球有多少只麦麦
 enable = true
