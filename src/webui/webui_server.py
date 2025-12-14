@@ -22,6 +22,9 @@ class WebUIServer:
         self.app = FastAPI(title="MaiBot WebUI")
         self._server = None
 
+        # 配置防爬虫中间件（需要在CORS之前注册）
+        self._setup_anti_crawler()
+
         # 配置 CORS（支持开发环境跨域请求）
         self._setup_cors()
 
@@ -31,6 +34,9 @@ class WebUIServer:
         # 重要：先注册 API 路由，再设置静态文件
         self._register_api_routes()
         self._setup_static_files()
+        
+        # 注册robots.txt路由
+        self._setup_robots_txt()
 
     def _setup_cors(self):
         """配置 CORS 中间件"""
@@ -102,6 +108,46 @@ class WebUIServer:
             return FileResponse(static_path / "index.html", media_type="text/html")
 
         logger.info(f"✅ WebUI 静态文件服务已配置: {static_path}")
+
+    def _setup_anti_crawler(self):
+        """配置防爬虫中间件"""
+        try:
+            from src.webui.anti_crawler import AntiCrawlerMiddleware
+            
+            # 从环境变量读取防爬虫模式（false/strict/loose/basic）
+            anti_crawler_mode = os.getenv("WEBUI_ANTI_CRAWLER_MODE", "basic").lower()
+            
+            # 注意：中间件按注册顺序反向执行，所以先注册的中间件后执行
+            # 我们需要在CORS之前注册，这样防爬虫检查会在CORS之前执行
+            self.app.add_middleware(
+                AntiCrawlerMiddleware,
+                mode=anti_crawler_mode
+            )
+            
+            mode_descriptions = {
+                "false": "已禁用",
+                "strict": "严格模式",
+                "loose": "宽松模式",
+                "basic": "基础模式"
+            }
+            mode_desc = mode_descriptions.get(anti_crawler_mode, "基础模式")
+            logger.info(f"🛡️ 防爬虫中间件已配置: {mode_desc}")
+        except Exception as e:
+            logger.error(f"❌ 配置防爬虫中间件失败: {e}", exc_info=True)
+
+    def _setup_robots_txt(self):
+        """设置robots.txt路由"""
+        try:
+            from src.webui.anti_crawler import create_robots_txt_response
+            
+            @self.app.get("/robots.txt", include_in_schema=False)
+            async def robots_txt():
+                """返回robots.txt，禁止所有爬虫"""
+                return create_robots_txt_response()
+            
+            logger.debug("✅ robots.txt 路由已注册")
+        except Exception as e:
+            logger.error(f"❌ 注册robots.txt路由失败: {e}", exc_info=True)
 
     def _register_api_routes(self):
         """注册所有 WebUI API 路由"""
