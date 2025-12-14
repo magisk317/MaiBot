@@ -128,9 +128,7 @@ class ExpressionSelector:
 
             # 查询所有相关chat_id的表达方式，排除 rejected=1 的，且只选择 count > 1 的
             style_query = Expression.select().where(
-                (Expression.chat_id.in_(related_chat_ids)) 
-                & (~Expression.rejected)
-                & (Expression.count > 1)
+                (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected) & (Expression.count > 1)
             )
 
             style_exprs = [
@@ -150,12 +148,15 @@ class ExpressionSelector:
             # 要求至少有10个 count > 1 的表达方式才进行选择
             min_required = 10
             if len(style_exprs) < min_required:
-                logger.info(f"聊天流 {chat_id} count > 1 的表达方式不足 {min_required} 个（实际 {len(style_exprs)} 个），不进行选择")
+                logger.info(
+                    f"聊天流 {chat_id} count > 1 的表达方式不足 {min_required} 个（实际 {len(style_exprs)} 个），不进行选择"
+                )
                 return [], []
 
             # 固定选择5个
             select_count = 5
             import random
+
             selected_style = random.sample(style_exprs, select_count)
 
             # 更新last_active_time
@@ -163,7 +164,9 @@ class ExpressionSelector:
                 self.update_expressions_last_active_time(selected_style)
 
             selected_ids = [expr["id"] for expr in selected_style]
-            logger.debug(f"think_level=0: 从 {len(style_exprs)} 个 count>1 的表达方式中随机选择了 {len(selected_style)} 个")
+            logger.debug(
+                f"think_level=0: 从 {len(style_exprs)} 个 count>1 的表达方式中随机选择了 {len(selected_style)} 个"
+            )
             return selected_style, selected_ids
 
         except Exception as e:
@@ -186,9 +189,7 @@ class ExpressionSelector:
             related_chat_ids = self.get_related_chat_ids(chat_id)
 
             # 优化：一次性查询所有相关chat_id的表达方式，排除 rejected=1 的表达
-            style_query = Expression.select().where(
-                (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected)
-            )
+            style_query = Expression.select().where((Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected))
 
             style_exprs = [
                 {
@@ -246,7 +247,9 @@ class ExpressionSelector:
 
         # 使用classic模式（随机选择+LLM选择）
         logger.debug(f"使用classic模式为聊天流 {chat_id} 选择表达方式，think_level={think_level}")
-        return await self._select_expressions_classic(chat_id, chat_info, max_num, target_message, reply_reason, think_level)
+        return await self._select_expressions_classic(
+            chat_id, chat_info, max_num, target_message, reply_reason, think_level
+        )
 
     async def _select_expressions_classic(
         self,
@@ -275,14 +278,12 @@ class ExpressionSelector:
             # think_level == 0: 只选择 count > 1 的项目，随机选10个，不进行LLM选择
             if think_level == 0:
                 return self._select_expressions_simple(chat_id, max_num)
-            
+
             # think_level == 1: 先选高count，再从所有表达方式中随机抽样
             # 1. 获取所有表达方式并分离 count > 1 和 count <= 1 的
             related_chat_ids = self.get_related_chat_ids(chat_id)
-            style_query = Expression.select().where(
-                (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected)
-            )
-            
+            style_query = Expression.select().where((Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected))
+
             all_style_exprs = [
                 {
                     "id": expr.id,
@@ -299,29 +300,33 @@ class ExpressionSelector:
 
             # 分离 count > 1 和 count <= 1 的表达方式
             high_count_exprs = [expr for expr in all_style_exprs if (expr.get("count", 1) or 1) > 1]
-            
+
             # 根据 think_level 设置要求（仅支持 0/1，0 已在上方返回）
             min_high_count = 10
             min_total_count = 10
             select_high_count = 5
             select_random_count = 5
-            
+
             # 检查数量要求
             if len(high_count_exprs) < min_high_count:
-                logger.info(f"聊天流 {chat_id} count > 1 的表达方式不足 {min_high_count} 个（实际 {len(high_count_exprs)} 个），不进行选择")
+                logger.info(
+                    f"聊天流 {chat_id} count > 1 的表达方式不足 {min_high_count} 个（实际 {len(high_count_exprs)} 个），不进行选择"
+                )
                 return [], []
-            
+
             if len(all_style_exprs) < min_total_count:
-                logger.info(f"聊天流 {chat_id} 总表达方式不足 {min_total_count} 个（实际 {len(all_style_exprs)} 个），不进行选择")
+                logger.info(
+                    f"聊天流 {chat_id} 总表达方式不足 {min_total_count} 个（实际 {len(all_style_exprs)} 个），不进行选择"
+                )
                 return [], []
-            
+
             # 先选取高count的表达方式
             selected_high = weighted_sample(high_count_exprs, min(len(high_count_exprs), select_high_count))
-            
+
             # 然后从所有表达方式中随机抽样（使用加权抽样）
             remaining_num = select_random_count
             selected_random = weighted_sample(all_style_exprs, min(len(all_style_exprs), remaining_num))
-            
+
             # 合并候选池（去重，避免重复）
             candidate_exprs = selected_high.copy()
             candidate_ids = {expr["id"] for expr in candidate_exprs}
@@ -329,9 +334,10 @@ class ExpressionSelector:
                 if expr["id"] not in candidate_ids:
                     candidate_exprs.append(expr)
                     candidate_ids.add(expr["id"])
-            
+
             # 打乱顺序，避免高count的都在前面
             import random
+
             random.shuffle(candidate_exprs)
 
             # 2. 构建所有表达方式的索引和情境列表
@@ -351,7 +357,7 @@ class ExpressionSelector:
             all_situations_str = "\n".join(all_situations)
 
             if target_message:
-                target_message_str = f"，现在你想要对这条消息进行回复：\"{target_message}\""
+                target_message_str = f'，现在你想要对这条消息进行回复："{target_message}"'
                 target_message_extra_block = "4.考虑你要回复的目标消息"
             else:
                 target_message_str = ""

@@ -47,4 +47,3 @@ def register_tool():
         ],
         execute_func=finish_search,
     )
-

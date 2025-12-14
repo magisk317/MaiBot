@@ -287,7 +287,6 @@ class PrivateReplyer:
 
         return f"{expression_habits_title}\n{expression_habits_block}", selected_ids
 
-
     async def build_tool_info(self, chat_history: str, sender: str, target: str, enable_tool: bool = True) -> str:
         """构建工具信息块
 
@@ -907,16 +906,11 @@ class PrivateReplyer:
         else:
             reply_target_block = ""
 
-
         chat_target_name = "对方"
         if self.chat_target_info:
             chat_target_name = self.chat_target_info.person_name or self.chat_target_info.user_nickname or "对方"
-        chat_target_1 = await global_prompt_manager.format_prompt(
-            "chat_target_private1", sender_name=chat_target_name
-        )
-        chat_target_2 = await global_prompt_manager.format_prompt(
-            "chat_target_private2", sender_name=chat_target_name
-        )
+        chat_target_1 = await global_prompt_manager.format_prompt("chat_target_private1", sender_name=chat_target_name)
+        chat_target_2 = await global_prompt_manager.format_prompt("chat_target_private2", sender_name=chat_target_name)
 
         template_name = "default_expressor_prompt"
 

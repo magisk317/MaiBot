@@ -3,7 +3,7 @@ import json
 import os
 import re
 import asyncio
-from typing import List, Optional, Tuple, Any, Dict, Callable
+from typing import List, Optional, Tuple, Any, Dict
 from src.common.logger import get_logger
 from src.common.database.database_model import Expression
 from src.llm_models.utils_model import LLMRequest
@@ -13,7 +13,12 @@ from src.chat.utils.chat_message_builder import (
 )
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.chat.message_receive.chat_stream import get_chat_manager
-from src.bw_learner.learner_utils import filter_message_content, is_bot_message, build_context_paragraph, contains_bot_self_name
+from src.bw_learner.learner_utils import (
+    filter_message_content,
+    is_bot_message,
+    build_context_paragraph,
+    contains_bot_self_name,
+)
 from src.bw_learner.jargon_miner import miner_manager
 from json_repair import repair_json
 
@@ -77,8 +82,6 @@ def init_prompt() -> None:
     Prompt(learn_style_prompt, "learn_style_prompt")
 
 
-
-
 class ExpressionLearner:
     def __init__(self, chat_id: str) -> None:
         self.express_learn_model: LLMRequest = LLMRequest(
@@ -95,20 +98,20 @@ class ExpressionLearner:
         self._learning_lock = asyncio.Lock()
 
     async def learn_and_store(
-        self, 
+        self,
         messages: List[Any],
-        person_name_filter: Optional[Callable[[str], bool]] = None,
     ) -> List[Tuple[str, str, str]]:
         """
         学习并存储表达方式
-        
+
         Args:
             messages: 外部传入的消息列表（必需）
-            person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
+            num: 学习数量
+            timestamp_start: 学习开始的时间戳，如果为None则使用self.last_learning_time
         """
         if not messages:
             return None
-        
+
         random_msg = messages
 
         # 学习用（开启行编号，便于溯源）
@@ -134,37 +137,26 @@ class ExpressionLearner:
         jargon_entries: List[Tuple[str, str]]  # (content, source_id)
         expressions, jargon_entries = self.parse_expression_response(response)
         expressions = self._filter_self_reference_styles(expressions)
-        
-        # 过滤掉包含人物名称的表达方式
-        if person_name_filter:
-            filtered_expressions = []
-            for situation, style, source_id in expressions:
-                # 检查 situation 和 style 是否包含人物名称
-                if person_name_filter(situation) or person_name_filter(style):
-                    logger.info(f"跳过包含人物名称的表达方式: situation={situation}, style={style}")
-                    continue
-                filtered_expressions.append((situation, style, source_id))
-            expressions = filtered_expressions
-        
+
         # 检查表达方式数量，如果超过10个则放弃本次表达学习
         if len(expressions) > 10:
             logger.info(f"表达方式提取数量超过10个（实际{len(expressions)}个），放弃本次表达学习")
             expressions = []
-        
+
         # 检查黑话数量，如果超过30个则放弃本次黑话学习
         if len(jargon_entries) > 30:
             logger.info(f"黑话提取数量超过30个（实际{len(jargon_entries)}个），放弃本次黑话学习")
             jargon_entries = []
-        
+
         # 处理黑话条目，路由到 jargon_miner（即使没有表达方式也要处理黑话）
         if jargon_entries:
-            await self._process_jargon_entries(jargon_entries, random_msg, person_name_filter)
-        
+            await self._process_jargon_entries(jargon_entries, random_msg)
+
         # 如果没有表达方式，直接返回
         if not expressions:
             logger.info("过滤后没有可用的表达方式（style 与机器人名称重复）")
             return []
-        
+
         logger.info(f"学习的prompt: {prompt}")
         logger.info(f"学习的expressions: {expressions}")
         logger.info(f"学习的jargon_entries: {jargon_entries}")
@@ -186,18 +178,17 @@ class ExpressionLearner:
 
             # 当前行的原始内容
             current_msg = random_msg[line_index]
-            
+
             # 过滤掉从bot自己发言中提取到的表达方式
             if is_bot_message(current_msg):
                 continue
-            
+
             context = filter_message_content(current_msg.processed_plain_text or "")
             if not context:
                 continue
 
             filtered_expressions.append((situation, style, context))
-        
-        
+
         learnt_expressions = filtered_expressions
 
         if learnt_expressions is None:
@@ -281,37 +272,38 @@ class ExpressionLearner:
             # 如果解析失败，尝试修复中文引号问题
             # 使用状态机方法，在 JSON 字符串值内部将中文引号替换为转义的英文引号
             try:
+
                 def fix_chinese_quotes_in_json(text):
                     """使用状态机修复 JSON 字符串值中的中文引号"""
                     result = []
                     i = 0
                     in_string = False
                     escape_next = False
-                    
+
                     while i < len(text):
                         char = text[i]
-                        
+
                         if escape_next:
                             # 当前字符是转义字符后的字符，直接添加
                             result.append(char)
                             escape_next = False
                             i += 1
                             continue
-                        
-                        if char == '\\':
+
+                        if char == "\\":
                             # 转义字符
                             result.append(char)
                             escape_next = True
                             i += 1
                             continue
-                        
+
                         if char == '"' and not escape_next:
                             # 遇到英文引号，切换字符串状态
                             in_string = not in_string
                             result.append(char)
                             i += 1
                             continue
-                        
+
                         if in_string:
                             # 在字符串值内部，将中文引号替换为转义的英文引号
                             if char == '"':  # 中文左引号 U+201C
@@ -323,13 +315,13 @@ class ExpressionLearner:
                         else:
                             # 不在字符串内，直接添加
                             result.append(char)
-                        
+
                         i += 1
-                    
-                    return ''.join(result)
-                
+
+                    return "".join(result)
+
                 fixed_raw = fix_chinese_quotes_in_json(raw)
-                
+
                 # 再次尝试解析
                 if fixed_raw.startswith("[") and fixed_raw.endswith("]"):
                     parsed = json.loads(fixed_raw)
@@ -357,12 +349,12 @@ class ExpressionLearner:
         for item in parsed_list:
             if not isinstance(item, dict):
                 continue
-            
+
             # 检查是否是表达方式条目（有 situation 和 style）
             situation = str(item.get("situation", "")).strip()
             style = str(item.get("style", "")).strip()
             source_id = str(item.get("source_id", "")).strip()
-            
+
             if situation and style and source_id:
                 # 表达方式条目
                 expressions.append((situation, style, source_id))
@@ -511,75 +503,64 @@ class ExpressionLearner:
             logger.error(f"概括表达情境失败: {e}")
         return None
 
-    async def _process_jargon_entries(
-        self, 
-        jargon_entries: List[Tuple[str, str]], 
-        messages: List[Any],
-        person_name_filter: Optional[Callable[[str], bool]] = None
-    ) -> None:
+    async def _process_jargon_entries(self, jargon_entries: List[Tuple[str, str]], messages: List[Any]) -> None:
         """
         处理从 expression learner 提取的黑话条目，路由到 jargon_miner
-        
+
         Args:
             jargon_entries: 黑话条目列表，每个元素是 (content, source_id)
             messages: 消息列表，用于构建上下文
-            person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
         """
         if not jargon_entries or not messages:
             return
-        
+
         # 获取 jargon_miner 实例
         jargon_miner = miner_manager.get_miner(self.chat_id)
-        
+
         # 构建黑话条目格式，与 jargon_miner.run_once 中的格式一致
         entries: List[Dict[str, List[str]]] = []
-        
+
         for content, source_id in jargon_entries:
             content = content.strip()
             if not content:
                 continue
-            
+
             # 检查是否包含机器人名称
             if contains_bot_self_name(content):
                 logger.info(f"跳过包含机器人昵称/别名的黑话: {content}")
                 continue
-            
-            # 检查是否包含人物名称
-            if person_name_filter and person_name_filter(content):
-                logger.info(f"跳过包含人物名称的黑话: {content}")
-                continue
-            
+
             # 解析 source_id
             source_id_str = (source_id or "").strip()
             if not source_id_str.isdigit():
                 logger.warning(f"黑话条目 source_id 无效: content={content}, source_id={source_id_str}")
                 continue
-            
+
             # build_anonymous_messages 的编号从 1 开始
             line_index = int(source_id_str) - 1
             if line_index < 0 or line_index >= len(messages):
                 logger.warning(f"黑话条目 source_id 超出范围: content={content}, source_id={source_id_str}")
                 continue
-            
+
             # 检查是否是机器人自己的消息
             target_msg = messages[line_index]
             if is_bot_message(target_msg):
                 logger.info(f"跳过引用机器人自身消息的黑话: content={content}, source_id={source_id_str}")
                 continue
-            
+
             # 构建上下文段落
             context_paragraph = build_context_paragraph(messages, line_index)
             if not context_paragraph:
                 logger.warning(f"黑话条目上下文为空: content={content}, source_id={source_id_str}")
                 continue
-            
+
             entries.append({"content": content, "raw_content": [context_paragraph]})
-        
+
         if not entries:
             return
-        
+
         # 调用 jargon_miner 处理这些条目
-        await jargon_miner.process_extracted_entries(entries, person_name_filter)
+        await jargon_miner.process_extracted_entries(entries)
 
 
 init_prompt()

@@ -609,23 +609,23 @@ def _fix_table_constraints(table_name, model, constraints_to_fix):
         fields = list(model._meta.fields.keys())
         # Peewee 默认使用 'id' 作为主键字段名
         # 尝试获取主键字段名，如果获取失败则默认使用 'id'
-        primary_key_name = 'id'  # 默认值
+        primary_key_name = "id"  # 默认值
         try:
-            if hasattr(model._meta, 'primary_key') and model._meta.primary_key:
-                if hasattr(model._meta.primary_key, 'name'):
+            if hasattr(model._meta, "primary_key") and model._meta.primary_key:
+                if hasattr(model._meta.primary_key, "name"):
                     primary_key_name = model._meta.primary_key.name
                 elif isinstance(model._meta.primary_key, str):
                     primary_key_name = model._meta.primary_key
         except Exception:
             pass  # 如果获取失败，使用默认值 'id'
-        
+
         # 如果字段列表包含主键，则排除它
         if primary_key_name in fields:
             fields_without_pk = [f for f in fields if f != primary_key_name]
             logger.info(f"排除主键字段 '{primary_key_name}'，让数据库自动生成新的主键")
         else:
             fields_without_pk = fields
-        
+
         fields_str = ", ".join(fields_without_pk)
 
         # 检查是否有字段需要从 NULL 改为 NOT NULL

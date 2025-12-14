@@ -34,7 +34,7 @@ def _format_toml_value(obj: Any, threshold: int, depth: int = 0) -> Any:
             return obj
 
         # 决定是否多行：仅在顶层且长度超过阈值时
-        should_multiline = (depth == 0 and len(obj) > threshold)
+        should_multiline = depth == 0 and len(obj) > threshold
 
         # 如果已经是 tomlkit Array，原地修改以保留注释
         if isinstance(obj, Array):
@@ -46,7 +46,7 @@ def _format_toml_value(obj: Any, threshold: int, depth: int = 0) -> Any:
         # 普通 list：转换为 tomlkit 数组
         arr = tomlkit.array()
         arr.multiline(should_multiline)
-        
+
         for item in obj:
             arr.append(_format_toml_value(item, threshold, depth + 1))
         return arr
@@ -112,7 +112,7 @@ def save_toml_with_format(
     formatted = _format_toml_value(data, multiline_threshold) if multiline_threshold >= 0 else data
     output = tomlkit.dumps(formatted)
     # 规范化：将 3+ 连续空行压缩为 1 个空行，防止空行累积
-    output = re.sub(r'\n{3,}', '\n\n', output)
+    output = re.sub(r"\n{3,}", "\n\n", output)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(output)
 
@@ -122,4 +122,4 @@ def format_toml_string(data: Any, multiline_threshold: int = 1) -> str:
     formatted = _format_toml_value(data, multiline_threshold) if multiline_threshold >= 0 else data
     output = tomlkit.dumps(formatted)
     # 规范化：将 3+ 连续空行压缩为 1 个空行，防止空行累积
-    return re.sub(r'\n{3,}', '\n\n', output)
+    return re.sub(r"\n{3,}", "\n\n", output)

@@ -23,7 +23,7 @@ def init_replyer_prompt():
 现在，你说：""",
         "replyer_prompt_0",
     )
-    
+
     Prompt(
         """{knowledge_prompt}{tool_info_block}{extra_info_block}
 {expression_habits_block}{memory_retrieval}{jargon_explanation}
@@ -44,4 +44,3 @@ def init_replyer_prompt():
 现在，你说：""",
         "replyer_prompt",
     )
-

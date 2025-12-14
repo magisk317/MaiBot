@@ -778,9 +778,9 @@ class DreamConfig(ConfigBase):
         """
         if not self.dream_time_ranges:
             return True
-        
+
         now_min = self._now_minutes()
-        
+
         for time_range in self.dream_time_ranges:
             if not isinstance(time_range, str):
                 continue
@@ -790,7 +790,7 @@ class DreamConfig(ConfigBase):
             start_min, end_min = parsed
             if self._in_range(now_min, start_min, end_min):
                 return True
-        
+
         return False
 
     def __post_init__(self):

@@ -311,7 +311,10 @@ def get_raw_msg_before_timestamp_with_chat(
     filter_query = {"chat_id": chat_id, "time": {"$lt": timestamp}}
     sort_order = [("time", 1)]
     return find_messages(
-        message_filter=filter_query, sort=sort_order, limit=limit, filter_intercept_message_level=filter_intercept_message_level
+        message_filter=filter_query,
+        sort=sort_order,
+        limit=limit,
+        filter_intercept_message_level=filter_intercept_message_level,
     )
 
 

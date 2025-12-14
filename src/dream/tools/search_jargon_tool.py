@@ -16,9 +16,7 @@ def make_search_jargon(chat_id: str):
             if not keyword or not keyword.strip():
                 return "未指定查询关键词（参数 keyword 为必填，且不能为空）"
 
-            logger.info(
-                f"[dream][tool] 调用 search_jargon(keyword={keyword}) (作用域 chat_id={chat_id})"
-            )
+            logger.info(f"[dream][tool] 调用 search_jargon(keyword={keyword}) (作用域 chat_id={chat_id})")
 
             # 基础条件：只查 is_jargon=True 的记录
             query = Jargon.select().where(Jargon.is_jargon)
@@ -102,5 +100,3 @@ def make_search_jargon(chat_id: str):
             return f"search_jargon 执行失败: {e}"
 
     return search_jargon
-
-

@@ -1,8 +1,9 @@
 from src.chat.utils.prompt_builder import Prompt
 
+
 def init_replyer_private_prompt():
     Prompt(
-            """{knowledge_prompt}{tool_info_block}{extra_info_block}
+        """{knowledge_prompt}{tool_info_block}{extra_info_block}
     {expression_habits_block}{memory_retrieval}{jargon_explanation}
 
     你正在和{sender_name}聊天，这是你们之前聊的内容:
@@ -17,9 +18,9 @@ def init_replyer_private_prompt():
     {reply_style}
     请注意不要输出多余内容(包括前后缀，冒号和引号，括号，表情等)，只输出回复内容。
     {moderation_prompt}不要输出多余内容(包括前后缀，冒号和引号，括号，表情包，at或 @等 )。""",
-            "private_replyer_prompt",
-        )
-        
+        "private_replyer_prompt",
+    )
+
     Prompt(
         """{knowledge_prompt}{tool_info_block}{extra_info_block}
 {expression_habits_block}{memory_retrieval}{jargon_explanation}

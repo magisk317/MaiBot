@@ -22,6 +22,9 @@ class WebUIServer:
         self.app = FastAPI(title="MaiBot WebUI")
         self._server = None
 
+        # 配置防爬虫中间件（需要在CORS之前注册）
+        self._setup_anti_crawler()
+
         # 配置 CORS（支持开发环境跨域请求）
         self._setup_cors()
 
@@ -32,6 +35,9 @@ class WebUIServer:
         self._register_api_routes()
         self._setup_static_files()
 
+        # 注册robots.txt路由
+        self._setup_robots_txt()
+
     def _setup_cors(self):
         """配置 CORS 中间件"""
         # 开发环境需要允许前端开发服务器的跨域请求
@@ -40,12 +46,21 @@ class WebUIServer:
             allow_origins=[
                 "http://localhost:5173",  # Vite 开发服务器
                 "http://127.0.0.1:5173",
+                "http://localhost:7999",  # 前端开发服务器备用端口
+                "http://127.0.0.1:7999",
                 "http://localhost:8001",  # 生产环境
                 "http://127.0.0.1:8001",
             ],
             allow_credentials=True,  # 允许携带 Cookie
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],  # 明确指定允许的方法
+            allow_headers=[
+                "Content-Type",
+                "Authorization",
+                "Accept",
+                "Origin",
+                "X-Requested-With",
+            ],  # 明确指定允许的头
+            expose_headers=["Content-Length", "Content-Type"],  # 允许前端读取的响应头
         )
         logger.debug("✅ CORS 中间件已配置")
 
@@ -89,19 +104,59 @@ class WebUIServer:
             """服务单页应用 - 只处理非 API 请求"""
             # 如果是根路径，直接返回 index.html
             if not full_path or full_path == "/":
-                return FileResponse(static_path / "index.html", media_type="text/html")
+                response = FileResponse(static_path / "index.html", media_type="text/html")
+                response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+                return response
 
             # 检查是否是静态文件
             file_path = static_path / full_path
             if file_path.is_file() and file_path.exists():
                 # 自动检测 MIME 类型
                 media_type = mimetypes.guess_type(str(file_path))[0]
-                return FileResponse(file_path, media_type=media_type)
+                response = FileResponse(file_path, media_type=media_type)
+                # HTML 文件添加防索引头
+                if str(file_path).endswith(".html"):
+                    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+                return response
 
             # 其他路径返回 index.html（SPA 路由）
-            return FileResponse(static_path / "index.html", media_type="text/html")
+            response = FileResponse(static_path / "index.html", media_type="text/html")
+            response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+            return response
 
         logger.info(f"✅ WebUI 静态文件服务已配置: {static_path}")
+
+    def _setup_anti_crawler(self):
+        """配置防爬虫中间件"""
+        try:
+            from src.webui.anti_crawler import AntiCrawlerMiddleware
+
+            # 从环境变量读取防爬虫模式（false/strict/loose/basic）
+            anti_crawler_mode = os.getenv("WEBUI_ANTI_CRAWLER_MODE", "basic").lower()
+
+            # 注意：中间件按注册顺序反向执行，所以先注册的中间件后执行
+            # 我们需要在CORS之前注册，这样防爬虫检查会在CORS之前执行
+            self.app.add_middleware(AntiCrawlerMiddleware, mode=anti_crawler_mode)
+
+            mode_descriptions = {"false": "已禁用", "strict": "严格模式", "loose": "宽松模式", "basic": "基础模式"}
+            mode_desc = mode_descriptions.get(anti_crawler_mode, "基础模式")
+            logger.info(f"🛡️ 防爬虫中间件已配置: {mode_desc}")
+        except Exception as e:
+            logger.error(f"❌ 配置防爬虫中间件失败: {e}", exc_info=True)
+
+    def _setup_robots_txt(self):
+        """设置robots.txt路由"""
+        try:
+            from src.webui.anti_crawler import create_robots_txt_response
+
+            @self.app.get("/robots.txt", include_in_schema=False)
+            async def robots_txt():
+                """返回robots.txt，禁止所有爬虫"""
+                return create_robots_txt_response()
+
+            logger.debug("✅ robots.txt 路由已注册")
+        except Exception as e:
+            logger.error(f"❌ 注册robots.txt路由失败: {e}", exc_info=True)
 
     def _register_api_routes(self):
         """注册所有 WebUI API 路由"""
@@ -110,8 +165,10 @@ class WebUIServer:
             from src.webui.routes import router as webui_router
             from src.webui.logs_ws import router as logs_router
             from src.webui.knowledge_routes import router as knowledge_router
+
             # 导入本地聊天室路由
             from src.webui.chat_routes import router as chat_router
+
             # 注册路由
             self.app.include_router(webui_router)
             self.app.include_router(logs_router)
@@ -166,6 +223,7 @@ class WebUIServer:
     def _check_port_available(self) -> bool:
         """检查端口是否可用"""
         import socket
+
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(1)

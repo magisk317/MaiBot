@@ -123,7 +123,11 @@ class ChatBot:
                         logger.warning(f"命令执行失败: {command_class.__name__} - {response}")
 
                     # 根据命令的拦截设置决定是否继续处理消息
-                    return True, response, not bool(intercept_message_level)  # 找到命令，根据intercept_message决定是否继续
+                    return (
+                        True,
+                        response,
+                        not bool(intercept_message_level),
+                    )  # 找到命令，根据intercept_message决定是否继续
 
                 except Exception as e:
                     logger.error(f"执行命令时出错: {command_class.__name__} - {e}")

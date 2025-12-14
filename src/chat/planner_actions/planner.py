@@ -77,8 +77,7 @@ target_message_id为必填，表示触发消息的id
 ```""",
         "planner_prompt",
     )
-    
-    
+
     Prompt(
         """
 {action_name}

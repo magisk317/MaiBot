@@ -82,9 +82,7 @@ class ExpressionReflector:
             # 获取未检查的表达
             try:
                 logger.info("[Expression Reflection] 查询未检查且未拒绝的表达")
-                expressions = (
-                    Expression.select().where((~Expression.checked) & (~Expression.rejected)).limit(50)
-                )
+                expressions = Expression.select().where((~Expression.checked) & (~Expression.rejected)).limit(50)
 
                 expr_list = list(expressions)
                 logger.info(f"[Expression Reflection] 找到 {len(expr_list)} 个候选表达")
@@ -147,7 +145,7 @@ expression_reflector_manager = ExpressionReflectorManager()
 
 async def _check_tracker_exists(operator_config: str) -> bool:
     """检查指定 Operator 是否已有活跃的 Tracker"""
-    from src.express.reflect_tracker import reflect_tracker_manager
+    from src.bw_learner.reflect_tracker import reflect_tracker_manager
 
     chat_manager = get_chat_manager()
     chat_stream = None
@@ -242,7 +240,7 @@ async def _send_to_operator(operator_config: str, text: str, expr: Expression):
     stream_id = chat_stream.stream_id
 
     # 注册 Tracker
-    from src.express.reflect_tracker import ReflectTracker, reflect_tracker_manager
+    from src.bw_learner.reflect_tracker import ReflectTracker, reflect_tracker_manager
 
     tracker = ReflectTracker(chat_stream=chat_stream, expression=expr, created_time=time.time())
     reflect_tracker_manager.add_tracker(stream_id, tracker)

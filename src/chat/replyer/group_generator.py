@@ -250,7 +250,12 @@ class DefaultReplyer:
         # 使用从处理器传来的选中表达方式
         # 使用模型预测选择表达方式
         selected_expressions, selected_ids = await expression_selector.select_suitable_expressions(
-            self.chat_stream.stream_id, chat_history, max_num=8, target_message=target, reply_reason=reply_reason, think_level=think_level
+            self.chat_stream.stream_id,
+            chat_history,
+            max_num=8,
+            target_message=target,
+            reply_reason=reply_reason,
+            think_level=think_level,
         )
 
         if selected_expressions:
@@ -272,7 +277,6 @@ class DefaultReplyer:
             expression_habits_block += f"{style_habits_str}\n"
 
         return f"{expression_habits_title}\n{expression_habits_block}", selected_ids
-
 
     async def build_tool_info(self, chat_history: str, sender: str, target: str, enable_tool: bool = True) -> str:
         """构建工具信息块
@@ -788,7 +792,8 @@ class DefaultReplyer:
         # 并行执行八个构建任务（包括黑话解释）
         task_results = await asyncio.gather(
             self._time_and_run_task(
-                self.build_expression_habits(chat_talking_prompt_short, target, reply_reason, think_level=think_level), "expression_habits"
+                self.build_expression_habits(chat_talking_prompt_short, target, reply_reason, think_level=think_level),
+                "expression_habits",
             ),
             self._time_and_run_task(
                 self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool), "tool_info"
@@ -979,7 +984,6 @@ class DefaultReplyer:
                 reply_target_block = "现在，你想要在群里发言或者回复消息。"
         else:
             reply_target_block = ""
-
 
         chat_target_1 = await global_prompt_manager.get_prompt_async("chat_target_group1")
         chat_target_2 = await global_prompt_manager.get_prompt_async("chat_target_group2")

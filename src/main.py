@@ -113,7 +113,6 @@ class MainSystem:
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")
 
-
         # 初始化聊天管理器
         await get_chat_manager()._initialize()
         asyncio.create_task(get_chat_manager()._auto_save_task())

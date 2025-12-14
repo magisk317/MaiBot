@@ -86,7 +86,7 @@ async def generate_dream_summary(
     try:
         import json
         from src.chat.utils.prompt_builder import global_prompt_manager
-        
+
         # 第一步：建立工具调用结果映射 (call_id -> result)
         tool_results_map: dict[str, str] = {}
         for msg in conversation_messages:
@@ -98,11 +98,11 @@ async def generate_dream_summary(
                     else:
                         content = str(msg.content)
                 tool_results_map[msg.tool_call_id] = content
-        
+
         # 第二步：详细记录所有工具调用操作和结果到日志
         tool_call_count = 0
         logger.info(f"[dream][工具调用详情] 开始记录 chat_id={chat_id} 的所有工具调用操作：")
-        
+
         for msg in conversation_messages:
             if msg.role == RoleType.Assistant and msg.tool_calls:
                 tool_call_count += 1
@@ -110,34 +110,38 @@ async def generate_dream_summary(
                 thought_content = ""
                 if msg.content:
                     if isinstance(msg.content, list) and msg.content:
-                        thought_content = msg.content[0].text if hasattr(msg.content[0], "text") else str(msg.content[0])
+                        thought_content = (
+                            msg.content[0].text if hasattr(msg.content[0], "text") else str(msg.content[0])
+                        )
                     else:
                         thought_content = str(msg.content)
-                
+
                 logger.info(f"[dream][工具调用详情] === 第 {tool_call_count} 组工具调用 ===")
                 if thought_content:
-                    logger.info(f"[dream][工具调用详情] 思考内容：{thought_content[:500]}{'...' if len(thought_content) > 500 else ''}")
-                
+                    logger.info(
+                        f"[dream][工具调用详情] 思考内容：{thought_content[:500]}{'...' if len(thought_content) > 500 else ''}"
+                    )
+
                 # 记录每个工具调用的详细信息
                 for idx, tool_call in enumerate(msg.tool_calls, 1):
                     tool_name = tool_call.func_name
                     tool_args = tool_call.args or {}
                     tool_call_id = tool_call.call_id
                     tool_result = tool_results_map.get(tool_call_id, "未找到执行结果")
-                    
+
                     # 格式化参数
                     try:
                         args_str = json.dumps(tool_args, ensure_ascii=False, indent=2) if tool_args else "无参数"
                     except Exception:
                         args_str = str(tool_args)
-                    
+
                     logger.info(f"[dream][工具调用详情] --- 工具 {idx}: {tool_name} ---")
                     logger.info(f"[dream][工具调用详情] 调用参数：\n{args_str}")
                     logger.info(f"[dream][工具调用详情] 执行结果：\n{tool_result}")
                     logger.info(f"[dream][工具调用详情] {'-' * 60}")
-        
+
         logger.info(f"[dream][工具调用详情] 共记录了 {tool_call_count} 组工具调用操作")
-        
+
         # 第三步：构建对话历史摘要（用于生成梦境）
         conversation_summary = []
         for msg in conversation_messages:
@@ -145,11 +149,11 @@ async def generate_dream_summary(
             content = ""
             if msg.content:
                 content = msg.content[0].text if isinstance(msg.content, list) and msg.content else str(msg.content)
-            
+
             if role == "user" and "轮次信息" in content:
                 # 跳过轮次信息消息
                 continue
-            
+
             if role == "assistant":
                 # 只保留思考内容，简化工具调用信息
                 if content:
@@ -162,13 +166,13 @@ async def generate_dream_summary(
                     # 截取前300字符
                     content_preview = content[:300] + ("..." if len(content) > 300 else "")
                     conversation_summary.append(f"[工具执行] {content_preview}")
-        
+
         conversation_text = "\n".join(conversation_summary[-20:])  # 只保留最后20条消息
-        
+
         # 随机选择2个梦境风格
         selected_styles = get_random_dream_styles(2)
-        dream_styles_text = "\n".join([f"{i+1}. {style}" for i, style in enumerate(selected_styles)])
-        
+        dream_styles_text = "\n".join([f"{i + 1}. {style}" for i, style in enumerate(selected_styles)])
+
         # 使用 Prompt 管理器格式化梦境生成 prompt
         dream_prompt = await global_prompt_manager.format_prompt(
             "dream_summary_prompt",
@@ -186,13 +190,14 @@ async def generate_dream_summary(
             max_tokens=512,
             temperature=0.8,
         )
-        
+
         if dream_content:
             logger.info(f"[dream][梦境总结] 对 chat_id={chat_id} 的整理过程梦境：\n{dream_content}")
         else:
             logger.warning("[dream][梦境总结] 未能生成梦境总结")
-            
+
     except Exception as e:
         logger.error(f"[dream][梦境总结] 生成梦境总结失败: {e}", exc_info=True)
+
 
 init_dream_summary_prompt()

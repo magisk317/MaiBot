@@ -42,22 +42,21 @@ def is_webui_virtual_group(group_id: str) -> bool:
 
 def parse_message_segments(segment) -> list:
     """解析消息段，转换为 WebUI 可用的格式
-    
+
     参考 NapCat 适配器的消息解析逻辑
-    
+
     Args:
         segment: Seg 消息段对象
-        
+
     Returns:
         list: 消息段列表，每个元素为 {"type": "...", "data": ...}
     """
-    from maim_message import Seg
-    
+
     result = []
-    
+
     if segment is None:
         return result
-    
+
     if segment.type == "seglist":
         # 处理消息段列表
         if segment.data:
@@ -112,15 +111,19 @@ def parse_message_segments(segment) -> list:
         forward_items = []
         if segment.data:
             for item in segment.data:
-                forward_items.append({
-                    "content": parse_message_segments(item.get("message_segment", {})) if isinstance(item, dict) else []
-                })
+                forward_items.append(
+                    {
+                        "content": parse_message_segments(item.get("message_segment", {}))
+                        if isinstance(item, dict)
+                        else []
+                    }
+                )
         result.append({"type": "forward", "data": forward_items})
     else:
         # 未知类型，尝试作为文本处理
         if segment.data:
             result.append({"type": "unknown", "original_type": segment.type, "data": str(segment.data)})
-    
+
     return result
 
 
@@ -134,7 +137,7 @@ async def _send_message(message: MessageSending, show_log=True) -> bool:
         # 检查是否是 WebUI 平台的消息，或者是 WebUI 虚拟群的消息
         chat_manager, webui_platform = get_webui_chat_broadcaster()
         is_webui_message = (platform == webui_platform) or is_webui_virtual_group(group_id)
-        
+
         if is_webui_message and chat_manager is not None:
             # WebUI 聊天室消息（包括虚拟身份模式），通过 WebSocket 广播
             import time
@@ -142,7 +145,7 @@ async def _send_message(message: MessageSending, show_log=True) -> bool:
 
             # 解析消息段，获取富文本内容
             message_segments = parse_message_segments(message.message_segment)
-            
+
             # 判断消息类型
             # 如果只有一个文本段，使用简单的 text 类型
             # 否则使用 rich 类型，包含完整的消息段

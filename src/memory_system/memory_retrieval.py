@@ -136,8 +136,6 @@ def init_memory_retrieval_prompt():
     )
 
 
-
-
 def _log_conversation_messages(
     conversation_messages: List[Message],
     head_prompt: Optional[str] = None,
@@ -172,7 +170,9 @@ def _log_conversation_messages(
 
         # 构建单条消息的日志信息
         # msg_info = f"\n========================================\n[消息 {idx}] 角色: {role_name} 内容类型: {content_type}\n-----------------------------"
-        msg_info = f"\n========================================\n[消息 {idx}] 角色: {role_name}\n-----------------------------"
+        msg_info = (
+            f"\n========================================\n[消息 {idx}] 角色: {role_name}\n-----------------------------"
+        )
 
         # if full_content:
         #     msg_info += f"\n{full_content}"
@@ -185,8 +185,7 @@ def _log_conversation_messages(
                 msg_info += f"\n    - {tool_call.func_name}: {json.dumps(tool_call.args, ensure_ascii=False)}"
 
         # if msg.tool_call_id:
-            # msg_info += f"\n  工具调用ID: {msg.tool_call_id}"
-
+        # msg_info += f"\n  工具调用ID: {msg.tool_call_id}"
 
         log_lines.append(msg_info)
 
@@ -330,7 +329,7 @@ async def _react_agent_solve_question(
                 remaining_iterations=remaining_iterations,
                 max_iterations=max_iterations,
             )
-        
+
         # 后续迭代都复用第一次构建的head_prompt
         head_prompt = first_head_prompt
 
@@ -365,7 +364,7 @@ async def _react_agent_solve_question(
         )
 
         # logger.info(
-            # f"ReAct Agent 第 {iteration + 1} 次迭代 模型: {model_name} ，调用工具数量: {len(tool_calls) if tool_calls else 0} ，调用工具响应: {response}"
+        # f"ReAct Agent 第 {iteration + 1} 次迭代 模型: {model_name} ，调用工具数量: {len(tool_calls) if tool_calls else 0} ，调用工具响应: {response}"
         # )
 
         if not success:
@@ -409,20 +408,20 @@ async def _react_agent_solve_question(
                     """从文本中解析finish_search函数调用，返回(found_answer, answer)元组，如果未找到则返回(None, None)"""
                     if not text:
                         return None, None
-                    
+
                     # 查找finish_search函数调用位置（不区分大小写）
                     func_pattern = "finish_search"
                     text_lower = text.lower()
                     func_pos = text_lower.find(func_pattern)
                     if func_pos == -1:
                         return None, None
-                    
+
                     # 查找函数调用的开始和结束位置
                     # 从func_pos开始向后查找左括号
                     start_pos = text.find("(", func_pos)
                     if start_pos == -1:
                         return None, None
-                    
+
                     # 查找匹配的右括号（考虑嵌套）
                     paren_count = 0
                     end_pos = start_pos
@@ -437,10 +436,10 @@ async def _react_agent_solve_question(
                     else:
                         # 没有找到匹配的右括号
                         return None, None
-                    
+
                     # 提取函数参数部分
                     params_text = text[start_pos + 1 : end_pos]
-                    
+
                     # 解析found_answer参数（布尔值，可能是true/false/True/False）
                     found_answer = None
                     found_answer_patterns = [
@@ -454,49 +453,60 @@ async def _react_agent_solve_question(
                         if match:
                             found_answer = "true" in match.group(0).lower()
                             break
-                    
+
                     # 解析answer参数（字符串，使用extract_quoted_content）
                     answer = extract_quoted_content(text, "finish_search", "answer")
-                    
+
                     return found_answer, answer
-                
+
                 parsed_found_answer, parsed_answer = parse_finish_search_from_text(response)
-                
+
                 if parsed_found_answer is not None:
                     # 检测到finish_search函数调用格式
                     if parsed_found_answer:
                         # 找到了答案
                         if parsed_answer:
-                            step["actions"].append({"action_type": "finish_search", "action_params": {"found_answer": True, "answer": parsed_answer}})
+                            step["actions"].append(
+                                {
+                                    "action_type": "finish_search",
+                                    "action_params": {"found_answer": True, "answer": parsed_answer},
+                                }
+                            )
                             step["observations"] = ["检测到finish_search文本格式调用，找到答案"]
                             thinking_steps.append(step)
-                            logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 通过finish_search文本格式找到关于问题{question}的答案: {parsed_answer}")
-                            
+                            logger.info(
+                                f"ReAct Agent 第 {iteration + 1} 次迭代 通过finish_search文本格式找到关于问题{question}的答案: {parsed_answer}"
+                            )
+
                             _log_conversation_messages(
                                 conversation_messages,
                                 head_prompt=first_head_prompt,
                                 final_status=f"找到答案：{parsed_answer}",
                             )
-                            
+
                             return True, parsed_answer, thinking_steps, False
                         else:
                             # found_answer为True但没有提供answer，视为错误，继续迭代
-                            logger.warning(f"ReAct Agent 第 {iteration + 1} 次迭代 finish_search文本格式found_answer为True但未提供answer")
+                            logger.warning(
+                                f"ReAct Agent 第 {iteration + 1} 次迭代 finish_search文本格式found_answer为True但未提供answer"
+                            )
                     else:
                         # 未找到答案，直接退出查询
-                        step["actions"].append({"action_type": "finish_search", "action_params": {"found_answer": False}})
+                        step["actions"].append(
+                            {"action_type": "finish_search", "action_params": {"found_answer": False}}
+                        )
                         step["observations"] = ["检测到finish_search文本格式调用，未找到答案"]
                         thinking_steps.append(step)
                         logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 通过finish_search文本格式判断未找到答案")
-                        
+
                         _log_conversation_messages(
                             conversation_messages,
                             head_prompt=first_head_prompt,
                             final_status="未找到答案：通过finish_search文本格式判断未找到答案",
                         )
-                        
+
                         return False, "", thinking_steps, False
-                
+
                 # 如果没有检测到finish_search格式，记录思考过程，继续下一轮迭代
                 step["observations"] = [f"思考完成，但未调用工具。响应: {response}"]
                 logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 思考完成但未调用工具: {response}")
@@ -514,44 +524,53 @@ async def _react_agent_solve_question(
         for tool_call in tool_calls:
             tool_name = tool_call.func_name
             tool_args = tool_call.args or {}
-            
+
             if tool_name == "finish_search":
                 finish_search_found = tool_args.get("found_answer", False)
                 finish_search_answer = tool_args.get("answer", "")
-                
+
                 if finish_search_found:
                     # 找到了答案
                     if finish_search_answer:
-                        step["actions"].append({"action_type": "finish_search", "action_params": {"found_answer": True, "answer": finish_search_answer}})
+                        step["actions"].append(
+                            {
+                                "action_type": "finish_search",
+                                "action_params": {"found_answer": True, "answer": finish_search_answer},
+                            }
+                        )
                         step["observations"] = ["检测到finish_search工具调用，找到答案"]
                         thinking_steps.append(step)
-                        logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 通过finish_search工具找到关于问题{question}的答案: {finish_search_answer}")
-                        
+                        logger.info(
+                            f"ReAct Agent 第 {iteration + 1} 次迭代 通过finish_search工具找到关于问题{question}的答案: {finish_search_answer}"
+                        )
+
                         _log_conversation_messages(
                             conversation_messages,
                             head_prompt=first_head_prompt,
                             final_status=f"找到答案：{finish_search_answer}",
                         )
-                        
+
                         return True, finish_search_answer, thinking_steps, False
                     else:
                         # found_answer为True但没有提供answer，视为错误
-                        logger.warning(f"ReAct Agent 第 {iteration + 1} 次迭代 finish_search工具found_answer为True但未提供answer")
+                        logger.warning(
+                            f"ReAct Agent 第 {iteration + 1} 次迭代 finish_search工具found_answer为True但未提供answer"
+                        )
                 else:
                     # 未找到答案，直接退出查询
                     step["actions"].append({"action_type": "finish_search", "action_params": {"found_answer": False}})
                     step["observations"] = ["检测到finish_search工具调用，未找到答案"]
                     thinking_steps.append(step)
                     logger.info(f"ReAct Agent 第 {iteration + 1} 次迭代 通过finish_search工具判断未找到答案")
-                    
+
                     _log_conversation_messages(
                         conversation_messages,
                         head_prompt=first_head_prompt,
                         final_status="未找到答案：通过finish_search工具判断未找到答案",
                     )
-                    
+
                     return False, "", thinking_steps, False
-        
+
         # 如果没有finish_search工具调用，继续处理其他工具
         tool_tasks = []
         for i, tool_call in enumerate(tool_calls):
@@ -627,7 +646,7 @@ async def _react_agent_solve_question(
                                     observation_text += f"\n\n{jargon_info}"
                                     collected_info += f"\n{jargon_info}\n"
                                     logger.info(f"工具输出触发黑话解析: {new_concepts}")
-                    
+
                     tool_builder = MessageBuilder()
                     tool_builder.set_role(RoleType.Tool)
                     tool_builder.add_text_content(observation_text)
@@ -645,7 +664,7 @@ async def _react_agent_solve_question(
     elif iteration + 1 >= max_iterations:
         should_do_final_evaluation = True
         logger.info(f"ReAct Agent达到最大迭代次数（已迭代{iteration + 1}次），进入最终评估")
-    
+
     if should_do_final_evaluation:
         # 获取必要变量用于最终评估
         tool_registry = get_tool_registry()
@@ -653,7 +672,7 @@ async def _react_agent_solve_question(
         time_now = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         current_iteration = iteration + 1
         remaining_iterations = 0
-        
+
         # 提取函数调用中参数的值，支持单引号和双引号
         def extract_quoted_content(text, func_name, param_name):
             """从文本中提取函数调用中参数的值，支持单引号和双引号
@@ -724,7 +743,13 @@ async def _react_agent_solve_question(
             max_iterations=max_iterations,
         )
 
-        eval_success, eval_response, eval_reasoning_content, eval_model_name, eval_tool_calls = await llm_api.generate_with_model_with_tools(
+        (
+            eval_success,
+            eval_response,
+            eval_reasoning_content,
+            eval_model_name,
+            eval_tool_calls,
+        ) = await llm_api.generate_with_model_with_tools(
             evaluation_prompt,
             model_config=model_config.model_task_config.tool_use,
             tool_options=[],  # 最终评估阶段不提供工具
@@ -739,7 +764,7 @@ async def _react_agent_solve_question(
                 final_status="未找到答案：最终评估阶段LLM调用失败",
             )
             return False, "最终评估阶段LLM调用失败", thinking_steps, is_timeout
-        
+
         if global_config.debug.show_memory_prompt:
             logger.info(f"ReAct Agent 最终评估Prompt: {evaluation_prompt}")
             logger.info(f"ReAct Agent 最终评估响应: {eval_response}")
@@ -759,17 +784,17 @@ async def _react_agent_solve_question(
                 "iteration": current_iteration,
                 "thought": f"[最终评估] {eval_response}",
                 "actions": [{"action_type": "found_answer", "action_params": {"answer": found_answer_content}}],
-                "observations": ["最终评估阶段检测到found_answer"]
+                "observations": ["最终评估阶段检测到found_answer"],
             }
             thinking_steps.append(eval_step)
             logger.info(f"ReAct Agent 最终评估阶段找到关于问题{question}的答案: {found_answer_content}")
-            
+
             _log_conversation_messages(
                 conversation_messages,
                 head_prompt=first_head_prompt,
                 final_status=f"找到答案：{found_answer_content}",
             )
-            
+
             return True, found_answer_content, thinking_steps, False
 
         # 如果评估为not_enough_info，返回空字符串（不返回任何信息）
@@ -778,35 +803,37 @@ async def _react_agent_solve_question(
                 "iteration": current_iteration,
                 "thought": f"[最终评估] {eval_response}",
                 "actions": [{"action_type": "not_enough_info", "action_params": {"reason": not_enough_info_reason}}],
-                "observations": ["最终评估阶段检测到not_enough_info"]
+                "observations": ["最终评估阶段检测到not_enough_info"],
             }
             thinking_steps.append(eval_step)
             logger.info(f"ReAct Agent 最终评估阶段判断信息不足: {not_enough_info_reason}")
-            
+
             _log_conversation_messages(
                 conversation_messages,
                 head_prompt=first_head_prompt,
                 final_status=f"未找到答案：{not_enough_info_reason}",
             )
-            
+
             return False, "", thinking_steps, is_timeout
 
         # 如果没有明确判断，视为not_enough_info，返回空字符串（不返回任何信息）
         eval_step = {
             "iteration": current_iteration,
             "thought": f"[最终评估] {eval_response}",
-            "actions": [{"action_type": "not_enough_info", "action_params": {"reason": "已到达最大迭代次数，无法找到答案"}}],
-            "observations": ["已到达最大迭代次数，无法找到答案"]
+            "actions": [
+                {"action_type": "not_enough_info", "action_params": {"reason": "已到达最大迭代次数，无法找到答案"}}
+            ],
+            "observations": ["已到达最大迭代次数，无法找到答案"],
         }
         thinking_steps.append(eval_step)
         logger.info("ReAct Agent 已到达最大迭代次数，无法找到答案")
-        
+
         _log_conversation_messages(
             conversation_messages,
             head_prompt=first_head_prompt,
             final_status="未找到答案：已到达最大迭代次数，无法找到答案",
         )
-        
+
         return False, "", thinking_steps, is_timeout
 
     # 如果正常迭代过程中提前找到答案返回，不会到达这里
@@ -817,7 +844,7 @@ async def _react_agent_solve_question(
         head_prompt=first_head_prompt,
         final_status="未找到答案：正常迭代结束",
     )
-    
+
     return False, "", thinking_steps, is_timeout
 
 
@@ -1129,7 +1156,9 @@ async def build_memory_retrieval_prompt(
         else:
             max_iterations = base_max_iterations
         timeout_seconds = global_config.memory.agent_timeout_seconds
-        logger.debug(f"问题数量: {len(questions)}，think_level={think_level}，设置最大迭代次数: {max_iterations}（基础值: {base_max_iterations}），超时时间: {timeout_seconds}秒")
+        logger.debug(
+            f"问题数量: {len(questions)}，think_level={think_level}，设置最大迭代次数: {max_iterations}（基础值: {base_max_iterations}），超时时间: {timeout_seconds}秒"
+        )
 
         # 并行处理所有问题，将概念检索结果作为初始信息传递
         question_tasks = [
@@ -1157,10 +1186,10 @@ async def build_memory_retrieval_prompt(
 
         # 获取最近10分钟内已找到答案的缓存记录
         cached_answers = _get_recent_found_answers(chat_id, time_window_seconds=600.0)
-        
+
         # 合并当前查询结果和缓存答案（去重：如果当前查询的问题在缓存中已存在，优先使用当前结果）
         all_results = []
-        
+
         # 先添加当前查询的结果
         current_questions = set()
         for result in question_results:
@@ -1170,7 +1199,7 @@ async def build_memory_retrieval_prompt(
                 if question_end != -1:
                     current_questions.add(result[4:question_end])
             all_results.append(result)
-        
+
         # 添加缓存答案（排除当前查询中已存在的问题）
         for cached_answer in cached_answers:
             if cached_answer.startswith("问题："):
@@ -1198,4 +1227,3 @@ async def build_memory_retrieval_prompt(
     except Exception as e:
         logger.error(f"记忆检索时发生异常: {str(e)}")
         return ""
-

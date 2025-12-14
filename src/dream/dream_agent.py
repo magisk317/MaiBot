@@ -1,14 +1,13 @@
 import asyncio
 import random
 import time
-import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from peewee import fn
 
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
-from src.common.database.database_model import ChatHistory, Jargon
+from src.common.database.database_model import ChatHistory
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.llm_models.payload_content.message import MessageBuilder, RoleType, Message
 from src.plugin_system.apis import llm_api
@@ -82,7 +81,6 @@ def init_dream_prompts() -> None:
     )
 
 
-
 class DreamTool:
     """dream 模块内部使用的简易工具封装"""
 
@@ -150,7 +148,13 @@ def init_dream_tools(chat_id: str) -> None:
             "search_chat_history",
             "根据关键词或参与人查询当前 chat_id 下的 ChatHistory 概览，便于快速定位相关记忆。",
             [
-                ("keyword", ToolParamType.STRING, "关键词（可选，支持多个关键词，可用空格、逗号等分隔）。", False, None),
+                (
+                    "keyword",
+                    ToolParamType.STRING,
+                    "关键词（可选，支持多个关键词，可用空格、逗号等分隔）。",
+                    False,
+                    None,
+                ),
                 ("participant", ToolParamType.STRING, "参与人昵称（可选）。", False, None),
             ],
             search_chat_history,
@@ -201,8 +205,20 @@ def init_dream_tools(chat_id: str) -> None:
             [
                 ("theme", ToolParamType.STRING, "新的主题标题（必填）。", True, None),
                 ("summary", ToolParamType.STRING, "新的概括内容（必填）。", True, None),
-                ("keywords", ToolParamType.STRING, "新的关键词 JSON 字符串，如 ['关键词1','关键词2']（必填）。", True, None),
-                ("key_point", ToolParamType.STRING, "新的关键信息 JSON 字符串，如 ['要点1','要点2']（必填）。", True, None),
+                (
+                    "keywords",
+                    ToolParamType.STRING,
+                    "新的关键词 JSON 字符串，如 ['关键词1','关键词2']（必填）。",
+                    True,
+                    None,
+                ),
+                (
+                    "key_point",
+                    ToolParamType.STRING,
+                    "新的关键信息 JSON 字符串，如 ['要点1','要点2']（必填）。",
+                    True,
+                    None,
+                ),
                 ("start_time", ToolParamType.STRING, "起始时间戳（秒，Unix 时间，必填）。", True, None),
                 ("end_time", ToolParamType.STRING, "结束时间戳（秒，Unix 时间，必填）。", True, None),
             ],
@@ -215,7 +231,13 @@ def init_dream_tools(chat_id: str) -> None:
             "finish_maintenance",
             "结束本次 dream 维护任务。当你认为当前 chat_id 下的维护工作已经完成，没有更多需要整理、合并或修改的内容时，调用此工具来主动结束本次运行。",
             [
-                ("reason", ToolParamType.STRING, "结束维护的原因说明（可选），例如 '已完成所有记录的整理' 或 '当前记录质量良好，无需进一步维护'。", False, None),
+                (
+                    "reason",
+                    ToolParamType.STRING,
+                    "结束维护的原因说明（可选），例如 '已完成所有记录的整理' 或 '当前记录质量良好，无需进一步维护'。",
+                    False,
+                    None,
+                ),
             ],
             finish_maintenance,
         )
@@ -246,7 +268,7 @@ async def run_dream_agent_once(
     """
     if max_iterations is None:
         max_iterations = global_config.dream.max_iterations
-    
+
     start_ts = time.time()
     logger.info(f"[dream] 开始对 chat_id={chat_id} 进行 dream 维护，最多迭代 {max_iterations} 轮")
 
@@ -282,9 +304,7 @@ async def run_dream_agent_once(
                     else "未知"
                 )
                 end_time_str = (
-                    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.end_time))
-                    if record.end_time
-                    else "未知"
+                    time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.end_time)) if record.end_time else "未知"
                 )
                 detail_text = (
                     f"ID={record.id}\n"
@@ -305,8 +325,7 @@ async def run_dream_agent_once(
                 start_detail_builder = MessageBuilder()
                 start_detail_builder.set_role(RoleType.User)
                 start_detail_builder.add_text_content(
-                    "【起始记忆详情】以下是本轮随机/指定的起始记忆的详细信息，供你在整理时优先参考：\n\n"
-                    + detail_text
+                    "【起始记忆详情】以下是本轮随机/指定的起始记忆的详细信息，供你在整理时优先参考：\n\n" + detail_text
                 )
                 conversation_messages.append(start_detail_builder.build())
             else:
@@ -343,13 +362,17 @@ async def run_dream_agent_once(
         conversation_messages.append(round_info_builder.build())
 
         # 调用 LLM 让其决定是否要使用工具
-        success, response, reasoning_content, model_name, tool_calls = (
-            await llm_api.generate_with_model_with_tools_by_message_factory(
-                message_factory,
-                model_config=model_config.model_task_config.tool_use,
-                tool_options=tool_defs,
-                request_type="dream.react",
-            )
+        (
+            success,
+            response,
+            reasoning_content,
+            model_name,
+            tool_calls,
+        ) = await llm_api.generate_with_model_with_tools_by_message_factory(
+            message_factory,
+            model_config=model_config.model_task_config.tool_use,
+            tool_options=tool_defs,
+            request_type="dream.react",
         )
 
         if not success:
@@ -522,7 +545,7 @@ async def start_dream_scheduler(
 
     if interval_seconds is None:
         interval_seconds = global_config.dream.interval_minutes * 60
-    
+
     logger.info(
         f"[dream] dream 调度器启动：首次延迟 {first_delay_seconds}s，之后每隔 {interval_seconds}s ({interval_seconds // 60} 分钟) 运行一次 dream agent"
     )
@@ -555,4 +578,3 @@ async def start_dream_scheduler(
 
 # 初始化提示词
 init_dream_prompts()
-

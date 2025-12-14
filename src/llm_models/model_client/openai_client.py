@@ -61,10 +61,16 @@ def _convert_messages(messages: list[Message]) -> list[ChatCompletionMessagePara
             content = []
             for item in message.content:
                 if isinstance(item, tuple):
+                    image_format = item[0].lower()
+                    # 规范 JPEG MIME 类型后缀，统一使用 image/jpeg
+                    if image_format in ("jpg", "jpeg"):
+                        mime_suffix = "jpeg"
+                    else:
+                        mime_suffix = image_format
                     content.append(
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:image/{item[0].lower()};base64,{item[1]}"},
+                            "image_url": {"url": f"data:image/{mime_suffix};base64,{item[1]}"},
                         }
                     )
                 elif isinstance(item, str):

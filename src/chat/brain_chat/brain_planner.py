@@ -147,7 +147,7 @@ class BrainPlanner:
         )  # 用于动作规划
 
         self.last_obs_time_mark = 0.0
-        
+
         # 计划日志记录
         self.plan_log: List[Tuple[str, float, List[ActionPlannerInfo]]] = []
 
@@ -203,9 +203,11 @@ class BrainPlanner:
             # 内部保留动作（不依赖插件系统）
             # 注意：listening 已合并到 wait 中，如果遇到 listening 则转换为 wait
             internal_action_names = ["complete_talk", "reply", "wait_time", "wait", "listening"]
-            
-            logger.debug(f"{self.log_prefix}动作验证: action={action}, internal={internal_action_names}, available={available_action_names}")
-            
+
+            logger.debug(
+                f"{self.log_prefix}动作验证: action={action}, internal={internal_action_names}, available={available_action_names}"
+            )
+
             # 将 listening 转换为 wait（向后兼容）
             if action == "listening":
                 logger.debug(f"{self.log_prefix}检测到 listening 动作，已合并到 wait，自动转换")
@@ -521,7 +523,7 @@ class BrainPlanner:
                 if json_objects:
                     logger.info(f"{self.log_prefix}从响应中提取到{len(json_objects)}个JSON对象")
                     for i, json_obj in enumerate(json_objects):
-                        logger.info(f"{self.log_prefix}解析第{i+1}个JSON对象: {json_obj}")
+                        logger.info(f"{self.log_prefix}解析第{i + 1}个JSON对象: {json_obj}")
                     filtered_actions_list = list(filtered_actions.items())
                     for json_obj in json_objects:
                         parsed_actions = self._parse_single_action(json_obj, message_id_list, filtered_actions_list)
@@ -553,7 +555,9 @@ class BrainPlanner:
 
         return extracted_reasoning, actions
 
-    def _create_complete_talk(self, reasoning: str, available_actions: Dict[str, ActionInfo]) -> List[ActionPlannerInfo]:
+    def _create_complete_talk(
+        self, reasoning: str, available_actions: Dict[str, ActionInfo]
+    ) -> List[ActionPlannerInfo]:
         """创建complete_talk"""
         return [
             ActionPlannerInfo(
@@ -564,7 +568,7 @@ class BrainPlanner:
                 available_actions=available_actions,
             )
         ]
-    
+
     def add_plan_log(self, reasoning: str, actions: List[ActionPlannerInfo]):
         """添加计划日志"""
         self.plan_log.append((reasoning, time.time(), actions))

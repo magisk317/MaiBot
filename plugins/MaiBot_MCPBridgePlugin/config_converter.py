@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 @dataclass
 class ConversionResult:
     """转换结果"""
+
     success: bool
     servers: List[Dict[str, Any]] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
@@ -53,7 +54,7 @@ class ConfigConverter:
     @classmethod
     def detect_format(cls, config: Dict[str, Any]) -> Optional[str]:
         """检测配置格式类型
-        
+
         Returns:
             "claude": Claude Desktop 格式 (mcpServers 对象)
             "kiro": Kiro MCP 格式 (mcpServers 对象，与 Claude 相同)
@@ -82,7 +83,7 @@ class ConfigConverter:
     @classmethod
     def parse_json_safe(cls, json_str: str) -> Tuple[Optional[Any], Optional[str]]:
         """安全解析 JSON 字符串
-        
+
         Returns:
             (解析结果, 错误信息)
         """
@@ -102,11 +103,11 @@ class ConfigConverter:
     @classmethod
     def validate_server_config(cls, name: str, config: Dict[str, Any]) -> Tuple[bool, Optional[str], List[str]]:
         """验证单个服务器配置
-        
+
         Args:
             name: 服务器名称
             config: 服务器配置字典
-            
+
         Returns:
             (是否有效, 错误信息, 警告列表)
         """
@@ -177,11 +178,11 @@ class ConfigConverter:
     @classmethod
     def convert_claude_server(cls, name: str, config: Dict[str, Any]) -> Dict[str, Any]:
         """将单个 Claude 格式服务器配置转换为 MaiBot 格式
-        
+
         Args:
             name: 服务器名称
             config: Claude 格式的服务器配置
-            
+
         Returns:
             MaiBot 格式的服务器配置
         """
@@ -231,10 +232,10 @@ class ConfigConverter:
     @classmethod
     def convert_maibot_server(cls, config: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """将单个 MaiBot 格式服务器配置转换为 Claude 格式
-        
+
         Args:
             config: MaiBot 格式的服务器配置
-            
+
         Returns:
             (服务器名称, Claude 格式的服务器配置)
         """
@@ -271,17 +272,13 @@ class ConfigConverter:
         return name, result
 
     @classmethod
-    def from_claude_format(
-        cls,
-        config: Dict[str, Any],
-        existing_names: Optional[set] = None
-    ) -> ConversionResult:
+    def from_claude_format(cls, config: Dict[str, Any], existing_names: Optional[set] = None) -> ConversionResult:
         """从 Claude Desktop 格式转换为 MaiBot 格式
-        
+
         Args:
             config: Claude Desktop 配置 (包含 mcpServers 字段)
             existing_names: 已存在的服务器名称集合，用于跳过重复
-            
+
         Returns:
             ConversionResult
         """
@@ -336,10 +333,10 @@ class ConfigConverter:
     @classmethod
     def to_claude_format(cls, servers: List[Dict[str, Any]]) -> Dict[str, Any]:
         """将 MaiBot 格式转换为 Claude Desktop 格式
-        
+
         Args:
             servers: MaiBot 格式的服务器列表
-            
+
         Returns:
             Claude Desktop 格式的配置
         """
@@ -355,19 +352,15 @@ class ConfigConverter:
         return {"mcpServers": mcp_servers}
 
     @classmethod
-    def import_from_string(
-        cls,
-        json_str: str,
-        existing_names: Optional[set] = None
-    ) -> ConversionResult:
+    def import_from_string(cls, json_str: str, existing_names: Optional[set] = None) -> ConversionResult:
         """从 JSON 字符串导入配置
-        
+
         自动检测格式并转换为 MaiBot 格式
-        
+
         Args:
             json_str: JSON 字符串
             existing_names: 已存在的服务器名称集合
-            
+
         Returns:
             ConversionResult
         """
@@ -422,19 +415,14 @@ class ConfigConverter:
         return result
 
     @classmethod
-    def export_to_string(
-        cls,
-        servers: List[Dict[str, Any]],
-        format_type: str = "claude",
-        pretty: bool = True
-    ) -> str:
+    def export_to_string(cls, servers: List[Dict[str, Any]], format_type: str = "claude", pretty: bool = True) -> str:
         """导出配置为 JSON 字符串
-        
+
         Args:
             servers: MaiBot 格式的服务器列表
             format_type: 导出格式 ("claude", "kiro", "maibot")
             pretty: 是否格式化输出
-            
+
         Returns:
             JSON 字符串
         """

@@ -78,9 +78,7 @@ def make_search_chat_history(chat_id: str):
                         if record.keywords:
                             try:
                                 keywords_data = (
-                                    json.loads(record.keywords)
-                                    if isinstance(record.keywords, str)
-                                    else record.keywords
+                                    json.loads(record.keywords) if isinstance(record.keywords, str) else record.keywords
                                 )
                                 if isinstance(keywords_data, list):
                                     record_keywords_list = [str(k).lower() for k in keywords_data]
@@ -125,9 +123,7 @@ def make_search_chat_history(chat_id: str):
                     keywords_str = "、".join(keywords_list)
                     if len(keywords_list) > 2:
                         required_count = len(keywords_list) - 1
-                        return (
-                            f"未找到包含至少{required_count}个关键词（共{len(keywords_list)}个）'{keywords_str}'的聊天记录"
-                        )
+                        return f"未找到包含至少{required_count}个关键词（共{len(keywords_list)}个）'{keywords_str}'的聊天记录"
                     else:
                         return f"未找到包含所有关键词'{keywords_str}'的聊天记录"
                 elif participant:
@@ -142,9 +138,7 @@ def make_search_chat_history(chat_id: str):
                     if record.keywords:
                         try:
                             keywords_data = (
-                                json.loads(record.keywords)
-                                if isinstance(record.keywords, str)
-                                else record.keywords
+                                json.loads(record.keywords) if isinstance(record.keywords, str) else record.keywords
                             )
                             if isinstance(keywords_data, list):
                                 for k in keywords_data:
@@ -160,13 +154,13 @@ def make_search_chat_history(chat_id: str):
                     keywords_str = "、".join(sorted(all_keywords_set))
                     response_text = (
                         f"包含“{search_label}”的结果过多，请尝试更多关键词精确查找\n\n"
-                        f"有关\"{search_label}\"的关键词：\n"
+                        f'有关"{search_label}"的关键词：\n'
                         f"{keywords_str}"
                     )
                 else:
                     response_text = (
                         f"包含“{search_label}”的结果过多，请尝试更多关键词精确查找\n\n"
-                        f"有关\"{search_label}\"的关键词信息为空"
+                        f'有关"{search_label}"的关键词信息为空'
                     )
 
                 logger.info(
@@ -192,9 +186,7 @@ def make_search_chat_history(chat_id: str):
                 if record.keywords:
                     try:
                         keywords_data = (
-                            json.loads(record.keywords)
-                            if isinstance(record.keywords, str)
-                            else record.keywords
+                            json.loads(record.keywords) if isinstance(record.keywords, str) else record.keywords
                         )
                         if isinstance(keywords_data, list) and keywords_data:
                             keywords_str = "、".join([str(k) for k in keywords_data])
@@ -220,8 +212,3 @@ def make_search_chat_history(chat_id: str):
             return f"search_chat_history 执行失败: {e}"
 
     return search_chat_history
-
-
-
-
-

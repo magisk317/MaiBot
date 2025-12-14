@@ -14,8 +14,3 @@ def make_finish_maintenance(chat_id: str):  # chat_id 目前未直接使用，�
         return msg
 
     return finish_maintenance
-
-
-
-
-

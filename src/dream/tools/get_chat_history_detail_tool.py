@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 
 from src.common.logger import get_logger
 from src.common.database.database_model import ChatHistory
@@ -20,14 +19,10 @@ def make_get_chat_history_detail(chat_id: str):  # chat_id 目前未直接使用
 
             # 将时间戳转换为可读时间格式
             start_time_str = (
-                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.start_time))
-                if record.start_time
-                else "未知"
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.start_time)) if record.start_time else "未知"
             )
             end_time_str = (
-                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.end_time))
-                if record.end_time
-                else "未知"
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(record.end_time)) if record.end_time else "未知"
             )
 
             result = (
@@ -40,17 +35,10 @@ def make_get_chat_history_detail(chat_id: str):  # chat_id 目前未直接使用
                 f"概括={record.summary or '无'}\n"
                 f"关键信息={record.key_point or '无'}"
             )
-            logger.debug(
-                f"[dream][tool] get_chat_history_detail 成功，预览: {result[:200].replace(chr(10), ' ')}"
-            )
+            logger.debug(f"[dream][tool] get_chat_history_detail 成功，预览: {result[:200].replace(chr(10), ' ')}")
             return result
         except Exception as e:
             logger.error(f"get_chat_history_detail 失败: {e}")
             return f"get_chat_history_detail 执行失败: {e}"
 
     return get_chat_history_detail
-
-
-
-
-

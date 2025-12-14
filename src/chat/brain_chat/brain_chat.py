@@ -176,19 +176,19 @@ class BrainChatting:
         # 如果有新消息，更新 last_read_time
         if len(recent_messages_list) >= 1:
             self.last_read_time = time.time()
-        
+
         # 总是执行一次思考迭代（不管有没有新消息）
         # wait 动作会在其内部等待，不需要在这里处理
         should_continue = await self._observe(recent_messages_list=recent_messages_list)
-        
+
         if not should_continue:
             # 选择了 complete_talk，返回 False 表示需要等待新消息
             return False
-        
+
         # 继续下一次迭代（除非选择了 complete_talk）
         # 短暂等待后再继续，避免过于频繁的循环
         await asyncio.sleep(0.1)
-        
+
         return True
 
     async def _send_and_store_reply(
@@ -328,9 +328,7 @@ class BrainChatting:
                 )
 
             # 检查是否有 complete_talk 动作（会停止后续迭代）
-            has_complete_talk = any(
-                action.action_type == "complete_talk" for action in action_to_use_info
-            )
+            has_complete_talk = any(action.action_type == "complete_talk" for action in action_to_use_info)
 
             # 并行执行所有动作
             action_tasks = [
@@ -430,12 +428,12 @@ class BrainChatting:
             await asyncio.sleep(3)
             self._loop_task = asyncio.create_task(self._main_chat_loop())
         logger.error(f"{self.log_prefix} 结束了当前聊天循环")
-    
+
     async def _wait_for_new_message(self):
         """等待新消息到达"""
         last_check_time = self.last_read_time
         check_interval = 1.0  # 每秒检查一次
-        
+
         while self.running:
             # 检查是否有新消息
             recent_messages_list = message_api.get_messages_by_time_in_chat(
@@ -448,13 +446,13 @@ class BrainChatting:
                 filter_command=False,
                 filter_intercept_message_level=1,
             )
-            
+
             # 如果有新消息，更新 last_read_time 并返回
             if len(recent_messages_list) >= 1:
                 self.last_read_time = time.time()
                 logger.info(f"{self.log_prefix} 检测到新消息，恢复循环")
                 return
-            
+
             # 等待一段时间后再次检查
             await asyncio.sleep(check_interval)
 
@@ -660,9 +658,9 @@ class BrainChatting:
                                 except (ValueError, TypeError):
                                     logger.warning(f"{self.log_prefix} wait_seconds 参数格式错误，使用默认值 5 秒")
                                     wait_seconds = 5
-                            
+
                             logger.info(f"{self.log_prefix} 执行 wait 动作，等待 {wait_seconds} 秒")
-                            
+
                             # 记录动作信息
                             await database_api.store_action_info(
                                 chat_stream=self.chat_stream,
@@ -673,12 +671,12 @@ class BrainChatting:
                                 action_data={"reason": reason, "wait_seconds": wait_seconds},
                                 action_name="wait",
                             )
-                            
+
                             # 等待指定时间
                             await asyncio.sleep(wait_seconds)
-                            
+
                             logger.info(f"{self.log_prefix} wait 动作完成，继续下一次思考")
-                            
+
                             # 这些动作本身不产生文本回复
                             self._last_successful_reply = False
                             return {
@@ -693,9 +691,9 @@ class BrainChatting:
                             logger.debug(f"{self.log_prefix} 检测到 listening 动作，已合并到 wait，自动转换")
                             # 使用默认等待时间
                             wait_seconds = 3
-                            
+
                             logger.info(f"{self.log_prefix} 执行 listening（转换为 wait）动作，等待 {wait_seconds} 秒")
-                            
+
                             # 记录动作信息
                             await database_api.store_action_info(
                                 chat_stream=self.chat_stream,
@@ -706,12 +704,12 @@ class BrainChatting:
                                 action_data={"reason": reason, "wait_seconds": wait_seconds},
                                 action_name="listening",
                             )
-                            
+
                             # 等待指定时间
                             await asyncio.sleep(wait_seconds)
-                            
+
                             logger.info(f"{self.log_prefix} listening 动作完成，继续下一次思考")
-                            
+
                             # 这些动作本身不产生文本回复
                             self._last_successful_reply = False
                             return {

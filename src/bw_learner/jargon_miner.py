@@ -1,4 +1,3 @@
-import time
 import json
 import asyncio
 import random
@@ -14,7 +13,6 @@ from src.config.config import model_config, global_config
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_messages_with_id,
-    get_raw_msg_by_timestamp_with_chat_inclusive,
 )
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.bw_learner.learner_utils import (
@@ -33,23 +31,23 @@ logger = get_logger("jargon")
 def _is_single_char_jargon(content: str) -> bool:
     """
     判断是否是单字黑话（单个汉字、英文或数字）
-    
+
     Args:
         content: 词条内容
-        
+
     Returns:
         bool: 如果是单字黑话返回True，否则返回False
     """
     if not content or len(content) != 1:
         return False
-    
+
     char = content[0]
     # 判断是否是单个汉字、单个英文字母或单个数字
     return (
-        '\u4e00' <= char <= '\u9fff' or  # 汉字
-        'a' <= char <= 'z' or            # 小写字母
-        'A' <= char <= 'Z' or            # 大写字母
-        '0' <= char <= '9'               # 数字
+        "\u4e00" <= char <= "\u9fff"  # 汉字
+        or "a" <= char <= "z"  # 小写字母
+        or "A" <= char <= "Z"  # 大写字母
+        or "0" <= char <= "9"  # 数字
     )
 
 
@@ -195,7 +193,7 @@ class JargonMiner:
             model_set=model_config.model_task_config.utils,
             request_type="jargon.extract",
         )
-        
+
         self.llm_inference = LLMRequest(
             model_set=model_config.model_task_config.utils,
             request_type="jargon.inference",
@@ -207,7 +205,7 @@ class JargonMiner:
         self.stream_name = stream_name if stream_name else self.chat_id
         self.cache_limit = 50
         self.cache: OrderedDict[str, None] = OrderedDict()
-        
+
         # 黑话提取锁，防止并发执行
         self._extraction_lock = asyncio.Lock()
 
@@ -299,17 +297,19 @@ class JargonMiner:
             # 获取当前count和上一次的meaning
             current_count = jargon_obj.count or 0
             previous_meaning = jargon_obj.meaning or ""
-            
+
             # 当count为24, 60时，随机移除一半的raw_content项目
             if current_count in [24, 60] and len(raw_content_list) > 1:
                 # 计算要保留的数量（至少保留1个）
                 keep_count = max(1, len(raw_content_list) // 2)
                 raw_content_list = random.sample(raw_content_list, keep_count)
-                logger.info(f"jargon {content} count={current_count}，随机移除后剩余 {len(raw_content_list)} 个raw_content项目")
+                logger.info(
+                    f"jargon {content} count={current_count}，随机移除后剩余 {len(raw_content_list)} 个raw_content项目"
+                )
 
             # 步骤1: 基于raw_content和content推断
             raw_content_text = "\n".join(raw_content_list)
-            
+
             # 当count为24, 60, 100时，在prompt中放入上一次推断出的meaning作为参考
             previous_meaning_section = ""
             previous_meaning_instruction = ""
@@ -318,8 +318,10 @@ class JargonMiner:
 **上一次推断的含义（仅供参考）**
 {previous_meaning}
 """
-                previous_meaning_instruction = "- 请参考上一次推断的含义，结合新的上下文信息，给出更准确或更新的推断结果"
-            
+                previous_meaning_instruction = (
+                    "- 请参考上一次推断的含义，结合新的上下文信息，给出更准确或更新的推断结果"
+                )
+
             prompt1 = await global_prompt_manager.format_prompt(
                 "jargon_inference_with_context_prompt",
                 content=content,
@@ -485,7 +487,7 @@ class JargonMiner:
     ) -> None:
         """
         运行一次黑话提取
-        
+
         Args:
             messages: 外部传入的消息列表（必需）
             person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
@@ -660,7 +662,9 @@ class JargonMiner:
                             if obj.raw_content:
                                 try:
                                     existing_raw_content = (
-                                        json.loads(obj.raw_content) if isinstance(obj.raw_content, str) else obj.raw_content
+                                        json.loads(obj.raw_content)
+                                        if isinstance(obj.raw_content, str)
+                                        else obj.raw_content
                                     )
                                     if not isinstance(existing_raw_content, list):
                                         existing_raw_content = [existing_raw_content] if existing_raw_content else []
@@ -740,14 +744,14 @@ class JargonMiner:
     ) -> None:
         """
         处理已提取的黑话条目（从 expression_learner 路由过来的）
-        
+
         Args:
             entries: 黑话条目列表，每个元素格式为 {"content": "...", "raw_content": [...]}
             person_name_filter: 可选的过滤函数，用于检查内容是否包含人物名称
         """
         if not entries:
             return
-        
+
         try:
             # 去重并合并raw_content（按 content 聚合）
             merged_entries: OrderedDict[str, Dict[str, List[str]]] = OrderedDict()
@@ -897,8 +901,6 @@ class JargonMinerManager:
 
 
 miner_manager = JargonMinerManager()
-
-
 
 
 def search_jargon(

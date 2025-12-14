@@ -16,9 +16,7 @@ from .tool_registry import register_memory_retrieval_tool
 logger = get_logger("memory_retrieval_tools")
 
 
-async def search_chat_history(
-    chat_id: str, keyword: Optional[str] = None, participant: Optional[str] = None
-) -> str:
+async def search_chat_history(chat_id: str, keyword: Optional[str] = None, participant: Optional[str] = None) -> str:
     """根据关键词或参与人查询记忆，返回匹配的记忆id、记忆标题theme和关键词keywords
 
     Args:
@@ -117,7 +115,7 @@ async def search_chat_history(
                         )
                         if kw_matched:
                             matched_count += 1
-                    
+
                     # 计算需要匹配的关键词数量
                     total_keywords = len(keywords_lower)
                     if total_keywords > 2:
@@ -126,7 +124,7 @@ async def search_chat_history(
                     else:
                         # 关键词数量<=2，必须全部匹配
                         required_matches = total_keywords
-                    
+
                     keyword_matched = matched_count >= required_matches
 
             # 两者都匹配（如果同时有participant和keyword，需要两者都匹配；如果只有一个条件，只需要该条件匹配）
@@ -144,7 +142,9 @@ async def search_chat_history(
                 keywords_list = parse_keywords_string(keyword)
                 if len(keywords_list) > 2:
                     required_count = len(keywords_list) - 1
-                    return f"未找到包含至少{required_count}个关键词（共{len(keywords_list)}个）'{keywords_str}'的聊天记录"
+                    return (
+                        f"未找到包含至少{required_count}个关键词（共{len(keywords_list)}个）'{keywords_str}'的聊天记录"
+                    )
                 else:
                     return f"未找到包含所有关键词'{keywords_str}'的聊天记录"
             elif participant:
@@ -160,9 +160,7 @@ async def search_chat_history(
                 if record.keywords:
                     try:
                         keywords_data = (
-                            json.loads(record.keywords)
-                            if isinstance(record.keywords, str)
-                            else record.keywords
+                            json.loads(record.keywords) if isinstance(record.keywords, str) else record.keywords
                         )
                         if isinstance(keywords_data, list):
                             for k in keywords_data:
@@ -179,13 +177,12 @@ async def search_chat_history(
                 keywords_str = "、".join(sorted(all_keywords_set))
                 return (
                     f"包含“{search_label}”的结果过多，请尝试更多关键词精确查找\n\n"
-                    f"有关\"{search_label}\"的关键词：\n"
+                    f'有关"{search_label}"的关键词：\n'
                     f"{keywords_str}"
                 )
             else:
                 return (
-                    f"包含“{search_label}”的结果过多，请尝试更多关键词精确查找\n\n"
-                    f"有关\"{search_label}\"的关键词信息为空"
+                    f'包含“{search_label}”的结果过多，请尝试更多关键词精确查找\n\n有关"{search_label}"的关键词信息为空'
                 )
 
         # 构建结果文本，返回id、theme和keywords（最多20条）

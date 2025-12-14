@@ -619,13 +619,13 @@ class HeartFChatting:
                         think_level = 0
                     # 使用 action_reasoning（planner 的整体思考理由）作为 reply_reason
                     planner_reasoning = action_planner_info.action_reasoning or reason
-                    
+
                     record_replyer_action_temp(
                         chat_id=self.stream_id,
                         reason=reason,
                         think_level=think_level,
                     )
-                    
+
                     await database_api.store_action_info(
                         chat_stream=self.chat_stream,
                         action_build_into_prompt=False,
