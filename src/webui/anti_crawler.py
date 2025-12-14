@@ -465,9 +465,9 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
             # 清理最旧的记录（删除最久未访问的IP）
             self._cleanup_oldest_ips()
 
-        # 获取或创建该IP的请求时间deque
+        # 获取或创建该IP的请求时间deque（不使用maxlen，避免限流变松）
         if client_ip not in self.request_times:
-            self.request_times[client_ip] = deque(maxlen=self.rate_limit_max_requests * 2)
+            self.request_times[client_ip] = deque()
 
         request_times = self.request_times[client_ip]
 
@@ -491,31 +491,33 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
             self._cleanup_oldest_ips()
 
     def _cleanup_oldest_ips(self):
-        """清理最久未访问的IP记录（避免全量遍历）"""
+        """清理最久未访问的IP记录（全量遍历找真正的oldest）"""
         if not self.request_times:
             return
 
-        # 找到最久未访问的IP（deque为空或最旧时间戳）
+        # 先收集空deque的IP（优先删除）
+        empty_ips = []
+        # 找到最久未访问的IP（最旧时间戳）
         oldest_ip = None
         oldest_time = float('inf')
 
-        # 只检查部分IP，不全量遍历
-        check_count = min(100, len(self.request_times))
-        checked = 0
+        # 全量遍历找真正的oldest（超限时性能可接受）
         for ip, times in self.request_times.items():
-            if checked >= check_count:
-                break
-            checked += 1
             if not times:
-                # 空deque，优先删除
-                del self.request_times[ip]
-                return
-            if times[0] < oldest_time:
-                oldest_time = times[0]
-                oldest_ip = ip
+                # 空deque，记录待删除
+                empty_ips.append(ip)
+            else:
+                # 找到最旧的时间戳
+                if times[0] < oldest_time:
+                    oldest_time = times[0]
+                    oldest_ip = ip
 
-        # 删除最久未访问的IP
-        if oldest_ip:
+        # 先删除空deque的IP
+        for ip in empty_ips:
+            del self.request_times[ip]
+
+        # 如果没有空deque可删除，且仍需要清理，删除最旧的一个IP
+        if not empty_ips and oldest_ip:
             del self.request_times[oldest_ip]
 
     def _is_trusted_proxy(self, ip: str) -> bool:
@@ -575,9 +577,10 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
             direct_client_ip = request.client.host
 
         # 检查是否信任X-Forwarded-For头
-        use_xff = TRUST_XFF
-        if not use_xff and TRUSTED_PROXIES and direct_client_ip:
-            # 如果配置了信任的代理列表，检查直接连接的IP是否在信任列表中
+        # TRUST_XFF 只表示"启用代理解析能力"，但仍要求直连 IP 在 TRUSTED_PROXIES 中
+        use_xff = False
+        if TRUST_XFF and TRUSTED_PROXIES and direct_client_ip:
+            # 只有在启用 TRUST_XFF 且直连 IP 在信任列表中时，才信任 XFF
             use_xff = self._is_trusted_proxy(direct_client_ip)
 
         # 如果信任代理，优先从 X-Forwarded-For 获取
@@ -684,8 +687,19 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # 允许访问静态资源（CSS、JS、图片等）
-        static_extensions = {".css", ".js", ".json", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot"}
-        if any(request.url.path.endswith(ext) for ext in static_extensions):
+        # 注意：.json 已移除，避免 API 路径绕过防护
+        # 静态资源只在特定前缀下放行（/static/、/assets/、/dist/）
+        static_extensions = {".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot"}
+        static_prefixes = {"/static/", "/assets/", "/dist/"}
+        
+        # 检查是否是静态资源路径（特定前缀下的静态文件）
+        path = request.url.path
+        is_static_path = any(path.startswith(prefix) for prefix in static_prefixes) and any(path.endswith(ext) for ext in static_extensions)
+        
+        # 也允许根路径下的静态文件（如 /favicon.ico）
+        is_root_static = path.count("/") == 1 and any(path.endswith(ext) for ext in static_extensions)
+        
+        if is_static_path or is_root_static:
             return await call_next(request)
 
         # 获取客户端IP（只获取一次，避免重复调用）
