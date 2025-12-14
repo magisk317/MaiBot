@@ -44,8 +44,15 @@ class WebUIServer:
                 "http://127.0.0.1:8001",
             ],
             allow_credentials=True,  # 允许携带 Cookie
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],  # 明确指定允许的方法
+            allow_headers=[
+                "Content-Type",
+                "Authorization",
+                "Accept",
+                "Origin",
+                "X-Requested-With",
+            ],  # 明确指定允许的头
+            expose_headers=["Content-Length", "Content-Type"],  # 允许前端读取的响应头
         )
         logger.debug("✅ CORS 中间件已配置")
 
