@@ -40,6 +40,8 @@ class WebUIServer:
             allow_origins=[
                 "http://localhost:5173",  # Vite 开发服务器
                 "http://127.0.0.1:5173",
+                "http://localhost:7999",  # 前端开发服务器备用端口
+                "http://127.0.0.1:7999",
                 "http://localhost:8001",  # 生产环境
                 "http://127.0.0.1:8001",
             ],
