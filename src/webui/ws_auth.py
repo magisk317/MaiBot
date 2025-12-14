@@ -85,6 +85,8 @@ async def get_ws_token(
     此端点验证当前会话的 Cookie 或 Authorization header，
     然后返回一个临时 token 用于 WebSocket 握手认证。
     临时 token 有效期 60 秒，且只能使用一次。
+    
+    注意：在未认证时返回 200 状态码但 success=False，避免前端因 401 刷新页面。
     """
     # 获取当前 session token
     session_token = None
@@ -94,12 +96,17 @@ async def get_ws_token(
         session_token = authorization.replace("Bearer ", "")
     
     if not session_token:
-        raise HTTPException(status_code=401, detail="未提供认证信息")
+        # 返回 200 但 success=False，避免前端因 401 刷新页面
+        # 这在登录页面是正常情况，不应该触发错误处理
+        logger.debug("ws-token 请求：未提供认证信息（可能在登录页面）")
+        return {"success": False, "message": "未提供认证信息，请先登录", "token": None, "expires_in": 0}
     
     # 验证 session token
     token_manager = get_token_manager()
     if not token_manager.verify_token(session_token):
-        raise HTTPException(status_code=401, detail="认证已过期，请重新登录")
+        # 同样返回 200 但 success=False，避免前端刷新
+        logger.debug("ws-token 请求：认证已过期")
+        return {"success": False, "message": "认证已过期，请重新登录", "token": None, "expires_in": 0}
     
     # 生成临时 WebSocket token
     ws_token = generate_ws_token(session_token)
