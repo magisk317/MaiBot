@@ -1,11 +1,12 @@
 """WebUI API 路由"""
 
-from fastapi import APIRouter, HTTPException, Header, Response, Request, Cookie
+from fastapi import APIRouter, HTTPException, Header, Response, Request, Cookie, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from src.common.logger import get_logger
 from .token_manager import get_token_manager
 from .auth import set_auth_cookie, clear_auth_cookie
+from .rate_limiter import get_rate_limiter, check_auth_rate_limit
 from .config_routes import router as config_router
 from .statistics_routes import router as statistics_router
 from .person_routes import router as person_router
@@ -16,6 +17,7 @@ from .plugin_routes import router as plugin_router
 from .plugin_progress_ws import get_progress_router
 from .routers.system import router as system_router
 from .model_routes import router as model_router
+from .ws_auth import router as ws_auth_router
 
 logger = get_logger("webui.api")
 
@@ -42,6 +44,8 @@ router.include_router(get_progress_router())
 router.include_router(system_router)
 # 注册模型列表获取路由
 router.include_router(model_router)
+# 注册 WebSocket 认证路由
+router.include_router(ws_auth_router)
 
 
 class TokenVerifyRequest(BaseModel):
@@ -107,12 +111,18 @@ async def health_check():
 
 
 @router.post("/auth/verify", response_model=TokenVerifyResponse)
-async def verify_token(request: TokenVerifyRequest, response: Response):
+async def verify_token(
+    request_body: TokenVerifyRequest, 
+    request: Request,
+    response: Response,
+    _rate_limit: None = Depends(check_auth_rate_limit),
+):
     """
     验证访问令牌，验证成功后设置 HttpOnly Cookie
 
     Args:
-        request: 包含 token 的验证请求
+        request_body: 包含 token 的验证请求
+        request: FastAPI Request 对象（用于获取客户端 IP）
         response: FastAPI Response 对象
 
     Returns:
@@ -120,16 +130,40 @@ async def verify_token(request: TokenVerifyRequest, response: Response):
     """
     try:
         token_manager = get_token_manager()
-        is_valid = token_manager.verify_token(request.token)
+        rate_limiter = get_rate_limiter()
+        
+        is_valid = token_manager.verify_token(request_body.token)
 
         if is_valid:
+            # 认证成功，重置失败计数
+            rate_limiter.reset_failures(request)
             # 设置 HttpOnly Cookie
-            set_auth_cookie(response, request.token)
+            set_auth_cookie(response, request_body.token)
             # 同时返回首次配置状态，避免额外请求
             is_first_setup = token_manager.is_first_setup()
             return TokenVerifyResponse(valid=True, message="Token 验证成功", is_first_setup=is_first_setup)
         else:
-            return TokenVerifyResponse(valid=False, message="Token 无效或已过期")
+            # 记录失败尝试
+            blocked, remaining = rate_limiter.record_failed_attempt(
+                request,
+                max_failures=5,      # 5 次失败
+                window_seconds=300,  # 5 分钟窗口
+                block_duration=600   # 封禁 10 分钟
+            )
+            
+            if blocked:
+                raise HTTPException(
+                    status_code=429,
+                    detail="认证失败次数过多，您的 IP 已被临时封禁 10 分钟"
+                )
+            
+            message = "Token 无效或已过期"
+            if remaining <= 2:
+                message += f"（剩余 {remaining} 次尝试机会）"
+            
+            return TokenVerifyResponse(valid=False, message=message)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Token 验证失败: {e}")
         raise HTTPException(status_code=500, detail="Token 验证失败") from e

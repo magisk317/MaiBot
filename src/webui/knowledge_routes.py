@@ -1,13 +1,22 @@
 """知识库图谱可视化 API 路由"""
 
 from typing import List, Optional
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends, Cookie, Header
 from pydantic import BaseModel
 import logging
+from src.webui.auth import verify_auth_token_from_cookie_or_header
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/webui/knowledge", tags=["knowledge"])
+
+
+def require_auth(
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> bool:
+    """认证依赖：验证用户是否已登录"""
+    return verify_auth_token_from_cookie_or_header(maibot_session, authorization)
 
 
 class KnowledgeNode(BaseModel):
@@ -113,6 +122,7 @@ def _convert_graph_to_json(kg_manager) -> KnowledgeGraph:
 async def get_knowledge_graph(
     limit: int = Query(100, ge=1, le=10000, description="返回的最大节点数"),
     node_type: str = Query("all", description="节点类型过滤: all, entity, paragraph"),
+    _auth: bool = Depends(require_auth),
 ):
     """获取知识图谱(限制节点数量)
 
@@ -199,7 +209,7 @@ async def get_knowledge_graph(
 
 
 @router.get("/stats", response_model=KnowledgeStats)
-async def get_knowledge_stats():
+async def get_knowledge_stats(_auth: bool = Depends(require_auth)):
     """获取知识库统计信息
 
     Returns:
@@ -248,7 +258,7 @@ async def get_knowledge_stats():
 
 
 @router.get("/search", response_model=List[KnowledgeNode])
-async def search_knowledge_node(query: str = Query(..., min_length=1)):
+async def search_knowledge_node(query: str = Query(..., min_length=1), _auth: bool = Depends(require_auth)):
     """搜索知识节点
 
     Args:
