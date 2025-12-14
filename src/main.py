@@ -13,9 +13,9 @@ from src.config.config import global_config
 from src.chat.message_receive.bot import chat_bot
 from src.common.logger import get_logger
 from src.common.server import get_global_server, Server
+from src.mood.mood_manager import mood_manager
 from src.chat.knowledge import lpmm_start_up
 from rich.traceback import install
-
 # from src.api.main import start_api_server
 
 # 导入新的插件管理器
@@ -23,7 +23,6 @@ from src.plugin_system.core.plugin_manager import plugin_manager
 
 # 导入消息API和traceback模块
 from src.common.message import get_global_api
-from src.dream.dream_agent import start_dream_scheduler
 
 # 插件系统现在使用统一的插件加载器
 
@@ -51,11 +50,23 @@ class MainSystem:
             logger.info("WebUI 已禁用")
             return
 
+        webui_mode = os.getenv("WEBUI_MODE", "production").lower()
+
         try:
             from src.webui.webui_server import get_webui_server
 
             self.webui_server = get_webui_server()
-
+            
+            if webui_mode == "development":
+                logger.info("📝 WebUI 开发模式已启用")
+                logger.info("🌐 后端 API 将运行在 http://0.0.0.0:8001")
+                logger.info("💡 请手动启动前端开发服务器: cd MaiBot-Dashboard && bun dev")
+                logger.info("💡 前端将运行在 http://localhost:7999")
+            else:
+                logger.info("✅ WebUI 生产模式已启用")
+                logger.info(f"🌐 WebUI 将运行在 http://0.0.0.0:8001")
+                logger.info("💡 请确保已构建前端: cd MaiBot-Dashboard && bun run build")
+                
         except Exception as e:
             logger.error(f"❌ 初始化 WebUI 服务器失败: {e}")
 
@@ -95,7 +106,7 @@ class MainSystem:
         await async_task_manager.add_task(TelemetryHeartBeatTask())
 
         # 添加记忆遗忘任务
-        from src.hippo_memorizer.memory_forget_task import MemoryForgetTask
+        from src.chat.utils.memory_forget_task import MemoryForgetTask
 
         await async_task_manager.add_task(MemoryForgetTask())
 
@@ -112,6 +123,11 @@ class MainSystem:
         # 初始化表情管理器
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")
+
+        # 启动情绪管理器
+        if global_config.mood.enable_mood:
+            await mood_manager.start()
+            logger.info("情绪管理器初始化成功")
 
         # 初始化聊天管理器
         await get_chat_manager()._initialize()
@@ -143,7 +159,6 @@ class MainSystem:
         try:
             tasks = [
                 get_emoji_manager().start_periodic_check_register(),
-                start_dream_scheduler(),
                 self.app.run(),
                 self.server.run(),
             ]
