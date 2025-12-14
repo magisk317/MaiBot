@@ -112,7 +112,7 @@ async def health_check():
 
 @router.post("/auth/verify", response_model=TokenVerifyResponse)
 async def verify_token(
-    request_body: TokenVerifyRequest, 
+    request_body: TokenVerifyRequest,
     request: Request,
     response: Response,
     _rate_limit: None = Depends(check_auth_rate_limit),
@@ -131,7 +131,7 @@ async def verify_token(
     try:
         token_manager = get_token_manager()
         rate_limiter = get_rate_limiter()
-        
+
         is_valid = token_manager.verify_token(request_body.token)
 
         if is_valid:
@@ -146,21 +146,18 @@ async def verify_token(
             # 记录失败尝试
             blocked, remaining = rate_limiter.record_failed_attempt(
                 request,
-                max_failures=5,      # 5 次失败
+                max_failures=5,  # 5 次失败
                 window_seconds=300,  # 5 分钟窗口
-                block_duration=600   # 封禁 10 分钟
+                block_duration=600,  # 封禁 10 分钟
             )
-            
+
             if blocked:
-                raise HTTPException(
-                    status_code=429,
-                    detail="认证失败次数过多，您的 IP 已被临时封禁 10 分钟"
-                )
-            
+                raise HTTPException(status_code=429, detail="认证失败次数过多，您的 IP 已被临时封禁 10 分钟")
+
             message = "Token 无效或已过期"
             if remaining <= 2:
                 message += f"（剩余 {remaining} 次尝试机会）"
-            
+
             return TokenVerifyResponse(valid=False, message=message)
     except HTTPException:
         raise

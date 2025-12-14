@@ -3,7 +3,6 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, get_origin
 from pathlib import Path
 import json
-import re
 from src.common.logger import get_logger
 from src.common.toml_utils import save_toml_with_format
 from src.config.config import MMC_VERSION
@@ -38,54 +37,54 @@ def get_token_from_cookie_or_header(
 def validate_safe_path(user_path: str, base_path: Path) -> Path:
     """
     验证用户提供的路径是否安全，防止路径遍历攻击
-    
+
     Args:
         user_path: 用户输入的路径（相对路径）
         base_path: 允许的基础目录
-    
+
     Returns:
         安全的绝对路径
-    
+
     Raises:
         HTTPException: 如果检测到路径遍历攻击
     """
     # 规范化基础路径
     base_resolved = base_path.resolve()
-    
+
     # 检查用户路径是否包含可疑字符
     # 禁止: .., 绝对路径开头, 空字节等
     if any(pattern in user_path for pattern in ["..", "\x00"]):
         logger.warning(f"检测到可疑路径: {user_path}")
         raise HTTPException(status_code=400, detail="路径包含非法字符")
-    
+
     # 检查是否为绝对路径（Windows 和 Unix）
     if user_path.startswith("/") or user_path.startswith("\\") or (len(user_path) > 1 and user_path[1] == ":"):
         logger.warning(f"检测到绝对路径: {user_path}")
         raise HTTPException(status_code=400, detail="不允许使用绝对路径")
-    
+
     # 构建目标路径并解析
     target_path = (base_path / user_path).resolve()
-    
+
     # 验证解析后的路径仍在基础目录内
     try:
         target_path.relative_to(base_resolved)
     except ValueError as e:
         logger.warning(f"路径遍历攻击检测: {user_path} -> {target_path}")
         raise HTTPException(status_code=400, detail="路径超出允许范围") from e
-    
+
     return target_path
 
 
 def validate_plugin_id(plugin_id: str) -> str:
     """
     验证插件 ID 格式是否安全
-    
+
     Args:
         plugin_id: 插件 ID (支持 author.name 格式，允许中文)
-    
+
     Returns:
         验证通过的插件 ID
-    
+
     Raises:
         HTTPException: 如果插件 ID 格式不安全
     """
@@ -93,24 +92,24 @@ def validate_plugin_id(plugin_id: str) -> str:
     if not plugin_id or not plugin_id.strip():
         logger.warning("非法插件 ID: 空字符串")
         raise HTTPException(status_code=400, detail="插件 ID 不能为空")
-    
+
     # 禁止危险字符: 路径分隔符、空字节、控制字符等
     dangerous_patterns = ["/", "\\", "\x00", "..", "\n", "\r", "\t"]
     for pattern in dangerous_patterns:
         if pattern in plugin_id:
             logger.warning(f"非法插件 ID 格式: {plugin_id} (包含危险字符)")
             raise HTTPException(status_code=400, detail="插件 ID 包含非法字符")
-    
+
     # 禁止以点开头或结尾（防止隐藏文件和路径问题）
     if plugin_id.startswith(".") or plugin_id.endswith("."):
         logger.warning(f"非法插件 ID: {plugin_id}")
         raise HTTPException(status_code=400, detail="插件 ID 不能以点开头或结尾")
-    
+
     # 禁止特殊名称
     if plugin_id in (".", ".."):
         logger.warning(f"非法插件 ID: {plugin_id}")
         raise HTTPException(status_code=400, detail="插件 ID 不能为特殊目录名")
-    
+
     return plugin_id
 
 
@@ -556,10 +555,7 @@ async def fetch_raw_file(
     if not token or not token_manager.verify_token(token):
         raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
 
-    logger.info(
-        f"收到获取 Raw 文件请求: "
-        f"{request.owner}/{request.repo}/{request.branch}/{request.file_path}"
-    )
+    logger.info(f"收到获取 Raw 文件请求: {request.owner}/{request.repo}/{request.branch}/{request.file_path}")
 
     # 发送开始加载进度
     await update_progress(
@@ -688,7 +684,7 @@ async def install_plugin(
     try:
         # 验证插件 ID 格式安全性
         plugin_id = validate_plugin_id(request.plugin_id)
-        
+
         # 推送进度：开始安装
         await update_progress(
             stage="loading",
@@ -899,7 +895,7 @@ async def uninstall_plugin(
     try:
         # 验证插件 ID 格式安全性
         plugin_id = validate_plugin_id(request.plugin_id)
-        
+
         # 推送进度：开始卸载
         await update_progress(
             stage="loading",
@@ -1041,7 +1037,7 @@ async def update_plugin(
     try:
         # 验证插件 ID 格式安全性
         plugin_id = validate_plugin_id(request.plugin_id)
-        
+
         # 推送进度：开始更新
         await update_progress(
             stage="loading",
@@ -1494,7 +1490,7 @@ async def get_plugin_config_schema(
                     ui_type = "text"
                     item_type = None
                     item_fields = None
-                    
+
                     if isinstance(field_value, bool):
                         ui_type = "switch"
                     elif isinstance(field_value, (int, float)):

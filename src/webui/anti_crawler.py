@@ -126,6 +126,7 @@ SCANNER_SPECIFIC_HEADERS = {
 # basic: 基础模式（只记录恶意访问，不阻止，不限制请求数，不跟踪IP）
 ANTI_CRAWLER_MODE = os.getenv("WEBUI_ANTI_CRAWLER_MODE", "basic").lower()
 
+
 # IP白名单配置（从环境变量读取，逗号分隔）
 # 支持格式：
 # - 精确IP：127.0.0.1, 192.168.1.100
@@ -135,10 +136,10 @@ ANTI_CRAWLER_MODE = os.getenv("WEBUI_ANTI_CRAWLER_MODE", "basic").lower()
 def _parse_allowed_ips(ip_string: str) -> list:
     """
     解析IP白名单字符串，支持精确IP、CIDR格式和通配符
-    
+
     Args:
         ip_string: 逗号分隔的IP字符串
-        
+
     Returns:
         IP白名单列表，每个元素可能是：
         - ipaddress.IPv4Network/IPv6Network对象（CIDR格式）
@@ -148,12 +149,12 @@ def _parse_allowed_ips(ip_string: str) -> list:
     allowed = []
     if not ip_string:
         return allowed
-    
+
     for ip_entry in ip_string.split(","):
         ip_entry = ip_entry.strip()  # 去除空格
         if not ip_entry:
             continue
-        
+
         # 检查通配符格式（包含*）
         if "*" in ip_entry:
             # 处理通配符
@@ -163,7 +164,7 @@ def _parse_allowed_ips(ip_string: str) -> list:
             else:
                 logger.warning(f"无效的通配符IP格式，已忽略: {ip_entry}")
             continue
-            
+
         try:
             # 尝试解析为CIDR格式（包含/）
             if "/" in ip_entry:
@@ -173,39 +174,39 @@ def _parse_allowed_ips(ip_string: str) -> list:
                 allowed.append(ipaddress.ip_address(ip_entry))
         except (ValueError, AttributeError) as e:
             logger.warning(f"无效的IP白名单条目，已忽略: {ip_entry} ({e})")
-    
+
     return allowed
 
 
 def _convert_wildcard_to_regex(wildcard_pattern: str) -> Optional[str]:
     """
     将通配符IP模式转换为正则表达式
-    
+
     支持的格式：
     - 192.168.*.* 或 192.168.*
     - 10.*.*.* 或 10.*
     - *.*.*.* 或 *
-    
+
     Args:
         wildcard_pattern: 通配符模式字符串
-        
+
     Returns:
         正则表达式字符串，如果格式无效则返回None
     """
     # 去除空格
     pattern = wildcard_pattern.strip()
-    
+
     # 处理单个*（匹配所有）
     if pattern == "*":
         return r".*"
-    
+
     # 处理IPv4通配符格式
     # 支持：192.168.*.*, 192.168.*, 10.*.*.*, 10.* 等
     parts = pattern.split(".")
-    
+
     if len(parts) > 4:
         return None  # IPv4最多4段
-    
+
     # 构建正则表达式
     regex_parts = []
     for part in parts:
@@ -221,14 +222,15 @@ def _convert_wildcard_to_regex(wildcard_pattern: str) -> Optional[str]:
                 return None  # 无效的数字
         else:
             return None  # 无效的格式
-    
+
     # 如果部分少于4段，补充.*
     while len(regex_parts) < 4:
         regex_parts.append(r"\d+")
-    
+
     # 组合成正则表达式
     regex = r"^" + r"\.".join(regex_parts) + r"$"
     return regex
+
 
 ALLOWED_IPS = _parse_allowed_ips(os.getenv("WEBUI_ALLOWED_IPS", ""))
 
@@ -250,7 +252,7 @@ def _get_mode_config(mode: str) -> dict:
         配置字典，包含所有相关参数
     """
     mode = mode.lower()
-    
+
     if mode == "false":
         return {
             "enabled": False,
@@ -320,7 +322,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
         self.check_asset_scanner = config["check_asset_scanner"]
         self.check_rate_limit = config["check_rate_limit"]
         self.block_on_detect = config["block_on_detect"]  # 是否阻止检测到的恶意访问
-        
+
         # 用于存储每个IP的请求时间戳（使用deque提高性能）
         self.request_times: dict[str, deque] = {}
         # 上次清理时间
@@ -353,7 +355,6 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
                 return True
 
         return False
-
 
     def _is_asset_scanner_header(self, request: Request) -> bool:
         """
@@ -499,7 +500,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
         empty_ips = []
         # 找到最久未访问的IP（最旧时间戳）
         oldest_ip = None
-        oldest_time = float('inf')
+        oldest_time = float("inf")
 
         # 全量遍历找真正的oldest（超限时性能可接受）
         for ip, times in self.request_times.items():
@@ -532,7 +533,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
         """
         if not TRUSTED_PROXIES or ip == "unknown":
             return False
-        
+
         # 检查代理列表中的每个条目
         for trusted_entry in TRUSTED_PROXIES:
             # 通配符模式（字符串，正则表达式）
@@ -558,7 +559,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
                         return True
                 except (ValueError, AttributeError):
                     continue
-        
+
         return False
 
     def _get_client_ip(self, request: Request) -> str:
@@ -635,7 +636,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
         """
         if not ALLOWED_IPS or ip == "unknown":
             return False
-        
+
         # 检查白名单中的每个条目
         for allowed_entry in ALLOWED_IPS:
             # 通配符模式（字符串，正则表达式）
@@ -664,7 +665,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
                 except (ValueError, AttributeError):
                     # IP格式无效，跳过
                     continue
-        
+
         return False
 
     async def dispatch(self, request: Request, call_next):
@@ -689,16 +690,31 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
         # 允许访问静态资源（CSS、JS、图片等）
         # 注意：.json 已移除，避免 API 路径绕过防护
         # 静态资源只在特定前缀下放行（/static/、/assets/、/dist/）
-        static_extensions = {".css", ".js", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".eot"}
+        static_extensions = {
+            ".css",
+            ".js",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".svg",
+            ".ico",
+            ".woff",
+            ".woff2",
+            ".ttf",
+            ".eot",
+        }
         static_prefixes = {"/static/", "/assets/", "/dist/"}
-        
+
         # 检查是否是静态资源路径（特定前缀下的静态文件）
         path = request.url.path
-        is_static_path = any(path.startswith(prefix) for prefix in static_prefixes) and any(path.endswith(ext) for ext in static_extensions)
-        
+        is_static_path = any(path.startswith(prefix) for prefix in static_prefixes) and any(
+            path.endswith(ext) for ext in static_extensions
+        )
+
         # 也允许根路径下的静态文件（如 /favicon.ico）
         is_root_static = path.count("/") == 1 and any(path.endswith(ext) for ext in static_extensions)
-        
+
         if is_static_path or is_root_static:
             return await call_next(request)
 
@@ -729,9 +745,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
 
         # 检测爬虫 User-Agent
         if self.check_user_agent and self._is_crawler_user_agent(user_agent):
-            logger.warning(
-                f"🚫 检测到爬虫请求 - IP: {client_ip}, User-Agent: {user_agent}, Path: {request.url.path}"
-            )
+            logger.warning(f"🚫 检测到爬虫请求 - IP: {client_ip}, User-Agent: {user_agent}, Path: {request.url.path}")
             # 根据配置决定是否阻止
             if self.block_on_detect:
                 return PlainTextResponse(
@@ -741,9 +755,7 @@ class AntiCrawlerMiddleware(BaseHTTPMiddleware):
 
         # 检查请求频率限制
         if self.check_rate_limit and self._check_rate_limit(client_ip):
-            logger.warning(
-                f"🚫 请求频率过高 - IP: {client_ip}, User-Agent: {user_agent}, Path: {request.url.path}"
-            )
+            logger.warning(f"🚫 请求频率过高 - IP: {client_ip}, User-Agent: {user_agent}, Path: {request.url.path}")
             return PlainTextResponse(
                 "Too Many Requests: Rate limit exceeded",
                 status_code=429,
@@ -770,4 +782,3 @@ Disallow: /
         media_type="text/plain",
         headers={"Cache-Control": "public, max-age=86400"},  # 缓存24小时
     )
-

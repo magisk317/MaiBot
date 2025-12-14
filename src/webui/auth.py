@@ -19,7 +19,7 @@ COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7天
 def _is_secure_environment() -> bool:
     """
     检测是否应该启用安全 Cookie（HTTPS）
-    
+
     Returns:
         bool: 如果应该使用 secure cookie 则返回 True
     """
@@ -28,12 +28,12 @@ def _is_secure_environment() -> bool:
         return True
     if os.environ.get("WEBUI_SECURE_COOKIE", "").lower() in ("false", "0", "no"):
         return False
-    
+
     # 检查是否是生产环境
     env = os.environ.get("WEBUI_MODE", "").lower()
     if env in ("production", "prod"):
         return True
-    
+
     # 默认：开发环境不启用（因为通常是 HTTP）
     return False
 
@@ -87,7 +87,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
     """
     # 根据环境决定安全设置
     is_secure = _is_secure_environment()
-    
+
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
@@ -109,7 +109,7 @@ def clear_auth_cookie(response: Response) -> None:
     """
     # 保持与 set_auth_cookie 相同的安全设置
     is_secure = _is_secure_environment()
-    
+
     response.delete_cookie(
         key=COOKIE_NAME,
         httponly=True,

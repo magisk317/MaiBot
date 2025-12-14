@@ -83,16 +83,16 @@ async def websocket_logs(websocket: WebSocket, token: Optional[str] = Query(None
     1. query 参数 token（推荐，通过 /api/webui/ws-token 获取临时 token）
     2. Cookie 中的 maibot_session
     3. 直接使用 session token（兼容）
-    
+
     示例：ws://host/ws/logs?token=xxx
     """
     is_authenticated = False
-    
+
     # 方式 1: 尝试验证临时 WebSocket token（推荐方式）
     if token and verify_ws_token(token):
         is_authenticated = True
         logger.debug("WebSocket 使用临时 token 认证成功")
-    
+
     # 方式 2: 尝试从 Cookie 获取 session token
     if not is_authenticated:
         cookie_token = websocket.cookies.get("maibot_session")
@@ -101,19 +101,19 @@ async def websocket_logs(websocket: WebSocket, token: Optional[str] = Query(None
             if token_manager.verify_token(cookie_token):
                 is_authenticated = True
                 logger.debug("WebSocket 使用 Cookie 认证成功")
-    
+
     # 方式 3: 尝试直接验证 query 参数作为 session token（兼容旧方式）
     if not is_authenticated and token:
         token_manager = get_token_manager()
         if token_manager.verify_token(token):
             is_authenticated = True
             logger.debug("WebSocket 使用 session token 认证成功")
-    
+
     if not is_authenticated:
         logger.warning("WebSocket 连接被拒绝：认证失败")
         await websocket.close(code=4001, reason="认证失败，请重新登录")
         return
-    
+
     await websocket.accept()
     active_connections.add(websocket)
     logger.info(f"📡 WebSocket 客户端已连接（已认证），当前连接数: {len(active_connections)}")

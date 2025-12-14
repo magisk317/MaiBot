@@ -346,7 +346,9 @@ async def update_bot_config_raw(raw_content: RawContentBody, _auth: bool = Depen
 
 
 @router.post("/model/section/{section_name}")
-async def update_model_config_section(section_name: str, section_data: SectionBody, _auth: bool = Depends(require_auth)):
+async def update_model_config_section(
+    section_name: str, section_data: SectionBody, _auth: bool = Depends(require_auth)
+):
     """更新模型配置的指定节（保留注释和格式）"""
     try:
         # 读取现有配置
@@ -383,8 +385,7 @@ async def update_model_config_section(section_name: str, section_data: SectionBo
                 provider_names = {p.get("name") for p in section_data if isinstance(p, dict)}
                 models = config_data.get("models", [])
                 orphaned_models = [
-                    m.get("name") for m in models 
-                    if isinstance(m, dict) and m.get("api_provider") not in provider_names
+                    m.get("name") for m in models if isinstance(m, dict) and m.get("api_provider") not in provider_names
                 ]
                 if orphaned_models:
                     error_msg = f"以下模型引用了已删除的提供商: {', '.join(orphaned_models)}。请先在模型管理页面删除这些模型，或重新分配它们的提供商。"
