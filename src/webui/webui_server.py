@@ -98,21 +98,6 @@ class WebUIServer:
             logger.warning("💡 请确认前端已正确构建")
             return
 
-        # robots.txt - 禁止搜索引擎索引
-        @self.app.get("/robots.txt", include_in_schema=False)
-        async def robots_txt():
-            """返回 robots.txt 禁止所有爬虫"""
-            from fastapi.responses import PlainTextResponse
-            content = """User-agent: *
-Disallow: /
-
-# MaiBot Dashboard - 私有管理面板，禁止索引
-"""
-            return PlainTextResponse(
-                content=content,
-                headers={"X-Robots-Tag": "noindex, nofollow, noarchive"}
-            )
-
         # 处理 SPA 路由 - 注意：这个路由优先级最低
         @self.app.get("/{full_path:path}", include_in_schema=False)
         async def serve_spa(full_path: str):
