@@ -36,7 +36,6 @@ def init_prompt():
         """
 {time_block}
 {name_block}
-你的兴趣是：{interest}
 {chat_context_description}，以下是具体的聊天内容
 **聊天内容**
 {chat_content_block}
@@ -46,9 +45,9 @@ reply
 动作描述：
 1.你可以选择呼叫了你的名字，但是你没有做出回应的消息进行回复
 2.你可以自然的顺着正在进行的聊天内容进行回复或自然的提出一个问题
-3.不要回复你自己发送的消息
+3.不要选择回复你自己发送的消息
 4.不要单独对表情包进行回复
-{{"action":"reply", "target_message_id":"消息id(m+数字)", "reason":"原因"}}
+{reply_action_example}
 
 no_reply
 动作描述：
@@ -56,66 +55,27 @@ no_reply
 控制聊天频率，不要太过频繁的发言
 {{"action":"no_reply"}}
 
-{no_reply_until_call_block}
-
 {action_options_text}
-
 
 **你之前的action执行和思考记录**
 {actions_before_now_block}
 
 请选择**可选的**且符合使用条件的action，并说明触发action的消息id(消息id格式:m+数字)
-不要回复你自己发送的消息
 先输出你的简短的选择思考理由，再输出你选择的action，理由不要分点，精简。
 **动作选择要求**
 请你根据聊天内容,用户的最新消息和以下标准选择合适的动作:
 {plan_style}
 {moderation_prompt}
 
-请选择所有符合使用要求的action，动作用json格式输出，用```json包裹，如果输出多个json，每个json都要单独一行放在同一个```json代码块内，你可以重复使用同一个动作或不同动作:
+target_message_id为必填，表示触发消息的id
+请选择所有符合使用要求的action，动作用json格式输出，用```json包裹，如果输出多个json，每个json都要单独一行放在同一个```json代码块内:
 **示例**
 // 理由文本（简短）
 ```json
-{{"action":"动作名", "target_message_id":"m123", "reason":"原因"}}
-{{"action":"动作名", "target_message_id":"m456", "reason":"原因"}}
+{{"action":"动作名", "target_message_id":"m123", .....}}
+{{"action":"动作名", "target_message_id":"m456", .....}}
 ```""",
         "planner_prompt",
-    )
-
-    Prompt(
-        """{time_block}
-{name_block}
-{chat_context_description}，以下是具体的聊天内容
-**聊天内容**
-{chat_content_block}
-
-**可选的action**
-no_reply
-动作描述：
-没有合适的可以使用的动作，不使用action
-{{"action":"no_reply"}}
-
-{action_options_text}
-
-**你之前的action执行和思考记录**
-{actions_before_now_block}
-
-请选择**可选的**且符合使用条件的action，并说明触发action的消息id(消息id格式:m+数字)
-先输出你的简短的选择思考理由，再输出你选择的action，理由不要分点，精简。
-**动作选择要求**
-请你根据聊天内容,用户的最新消息和以下标准选择合适的动作:
-1.思考**所有**的可用的action中的**每个动作**是否符合当下条件，如果动作使用条件符合聊天内容就使用
-2.如果相同的内容已经被执行，请不要重复执行
-{moderation_prompt}
-
-请选择所有符合使用要求的action，动作用json格式输出，用```json包裹，如果输出多个json，每个json都要单独一行放在同一个```json代码块内，你可以重复使用同一个动作或不同动作:
-**示例**
-// 理由文本（简短）
-```json
-{{"action":"动作名", "target_message_id":"m123", "reason":"原因"}}
-{{"action":"动作名", "target_message_id":"m456", "reason":"原因"}}
-```""",
-        "planner_prompt_mentioned",
     )
 
     Prompt(
@@ -124,7 +84,7 @@ no_reply
 动作描述：{action_description}
 使用条件{parallel_text}：
 {action_require}
-{{"action":"{action_name}",{action_parameters}, "target_message_id":"消息id(m+数字)", "reason":"原因"}}
+{{"action":"{action_name}",{action_parameters}, "target_message_id":"消息id(m+数字)"}}
 """,
         "action_prompt",
     )
@@ -181,8 +141,12 @@ class ActionPlanner:
             found_ids = set(matches)
             missing_ids = found_ids - available_ids
             if missing_ids:
-                logger.info(f"{self.log_prefix}planner理由中引用的消息ID不在当前上下文中: {missing_ids}, 可用ID: {list(available_ids)[:10]}...")
-            logger.info(f"{self.log_prefix}planner理由替换: 找到{len(matches)}个消息ID引用，其中{len(found_ids & available_ids)}个在上下文中")
+                logger.info(
+                    f"{self.log_prefix}planner理由中引用的消息ID不在当前上下文中: {missing_ids}, 可用ID: {list(available_ids)[:10]}..."
+                )
+            logger.info(
+                f"{self.log_prefix}planner理由替换: 找到{len(matches)}个消息ID引用，其中{len(found_ids & available_ids)}个在上下文中"
+            )
 
         def _replace(match: re.Match[str]) -> str:
             msg_id = match.group(0)
@@ -214,15 +178,19 @@ class ActionPlanner:
 
         try:
             action = action_json.get("action", "no_reply")
-            original_reasoning = action_json.get("reason", "未提供原因")
-            reasoning = self._replace_message_ids_with_text(original_reasoning, message_id_list)
-            if reasoning is None:
-                reasoning = original_reasoning
-            action_data = {key: value for key, value in action_json.items() if key not in ["action", "reason"]}
+            # 使用 extracted_reasoning（整体推理文本）作为 reasoning
+            if extracted_reasoning:
+                reasoning = self._replace_message_ids_with_text(extracted_reasoning, message_id_list)
+                if reasoning is None:
+                    reasoning = extracted_reasoning
+            else:
+                reasoning = "未提供原因"
+            action_data = {key: value for key, value in action_json.items() if key not in ["action"]}
             # 非no_reply动作需要target_message_id
             target_message = None
 
-            if target_message_id := action_json.get("target_message_id"):
+            target_message_id = action_json.get("target_message_id")
+            if target_message_id:
                 # 根据target_message_id查找原始消息
                 target_message = self.find_message_by_id(target_message_id, message_id_list)
                 if target_message is None:
@@ -233,9 +201,17 @@ class ActionPlanner:
                 target_message = message_id_list[-1][1]
                 logger.debug(f"{self.log_prefix}动作'{action}'缺少target_message_id，使用最新消息作为target_message")
 
+            if action != "no_reply" and target_message is not None and self._is_message_from_self(target_message):
+                logger.info(
+                    f"{self.log_prefix}Planner选择了自己的消息 {target_message_id or target_message.message_id} 作为目标，强制使用 no_reply"
+                )
+                reasoning = f"目标消息 {target_message_id or target_message.message_id} 来自机器人自身，违反不回复自身消息规则。原始理由: {reasoning}"
+                action = "no_reply"
+                target_message = None
+
             # 验证action是否可用
             available_action_names = [action_name for action_name, _ in current_available_actions]
-            internal_action_names = ["no_reply", "reply", "wait_time", "no_reply_until_call"]
+            internal_action_names = ["no_reply", "reply", "wait_time"]
 
             if action not in internal_action_names and action not in available_action_names:
                 logger.warning(
@@ -277,11 +253,20 @@ class ActionPlanner:
 
         return action_planner_infos
 
+    def _is_message_from_self(self, message: "DatabaseMessages") -> bool:
+        """判断消息是否由机器人自身发送"""
+        try:
+            return str(message.user_info.user_id) == str(global_config.bot.qq_account) and (
+                message.user_info.platform or ""
+            ) == (global_config.bot.platform or "")
+        except AttributeError:
+            logger.warning(f"{self.log_prefix}检测消息发送者失败，缺少必要字段")
+            return False
+
     async def plan(
         self,
         available_actions: Dict[str, ActionInfo],
         loop_start_time: float = 0.0,
-        is_mentioned: bool = False,
     ) -> List[ActionPlannerInfo]:
         # sourcery skip: use-named-expression
         """
@@ -293,7 +278,7 @@ class ActionPlanner:
             chat_id=self.chat_id,
             timestamp=time.time(),
             limit=int(global_config.chat.max_context_size * 0.6),
-            filter_no_read_command=True,
+            filter_intercept_message_level=1,
         )
         message_id_list: list[Tuple[str, "DatabaseMessages"]] = []
         chat_content_block, message_id_list = build_readable_messages_with_id(
@@ -322,11 +307,6 @@ class ActionPlanner:
 
         logger.debug(f"{self.log_prefix}过滤后有{len(filtered_actions)}个可用动作")
 
-        # 如果是提及时且没有可用动作，直接返回空列表，不调用LLM以节省token
-        if is_mentioned and not filtered_actions:
-            logger.info(f"{self.log_prefix}提及时没有可用动作，跳过plan调用")
-            return []
-
         # 构建包含所有动作的提示词
         prompt, message_id_list = await self.build_planner_prompt(
             is_group_chat=is_group_chat,
@@ -334,8 +314,6 @@ class ActionPlanner:
             current_available_actions=filtered_actions,
             chat_content_block=chat_content_block,
             message_id_list=message_id_list,
-            interest=global_config.personality.interest,
-            is_mentioned=is_mentioned,
         )
 
         # 调用LLM获取决策
@@ -407,32 +385,6 @@ class ActionPlanner:
 
         return plan_log_str
 
-    def _has_consecutive_no_reply(self, min_count: int = 3) -> bool:
-        """
-        检查是否有连续min_count次以上的no_reply
-
-        Args:
-            min_count: 需要连续的最少次数，默认3
-
-        Returns:
-            如果有连续min_count次以上no_reply返回True，否则返回False
-        """
-        consecutive_count = 0
-
-        # 从后往前遍历plan_log，检查最新的连续记录
-        for _reasoning, _timestamp, content in reversed(self.plan_log):
-            if isinstance(content, list) and all(isinstance(action, ActionPlannerInfo) for action in content):
-                # 检查所有action是否都是no_reply
-                if all(action.action_type == "no_reply" for action in content):
-                    consecutive_count += 1
-                    if consecutive_count >= min_count:
-                        return True
-                else:
-                    # 如果遇到非no_reply的action，重置计数
-                    break
-
-        return False
-
     async def build_planner_prompt(
         self,
         is_group_chat: bool,
@@ -441,7 +393,6 @@ class ActionPlanner:
         message_id_list: List[Tuple[str, "DatabaseMessages"]],
         chat_content_block: str = "",
         interest: str = "",
-        is_mentioned: bool = False,
     ) -> tuple[str, List[Tuple[str, "DatabaseMessages"]]]:
         """构建 Planner LLM 的提示词 (获取模板并填充数据)"""
         try:
@@ -462,47 +413,25 @@ class ActionPlanner:
             )
             name_block = f"你的名字是{bot_name}{bot_nickname}，请注意哪些是你自己的发言。"
 
-            # 根据是否是提及时选择不同的模板
-            if is_mentioned:
-                # 提及时使用简化版提示词，不需要reply、no_reply、no_reply_until_call
-                planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt_mentioned")
-                prompt = planner_prompt_template.format(
-                    time_block=time_block,
-                    chat_context_description=chat_context_description,
-                    chat_content_block=chat_content_block,
-                    actions_before_now_block=actions_before_now_block,
-                    action_options_text=action_options_block,
-                    moderation_prompt=moderation_prompt_block,
-                    name_block=name_block,
-                    interest=interest,
-                    plan_style=global_config.personality.plan_style,
-                )
+            # 根据 think_mode 配置决定 reply action 的示例 JSON
+            if global_config.chat.think_mode == "classic":
+                reply_action_example = '{{"action":"reply", "target_messamge_id":"消息id(m+数字)"}}'
             else:
-                # 正常流程使用完整版提示词
-                # 检查是否有连续3次以上no_reply，如果有则添加no_reply_until_call选项
-                no_reply_until_call_block = ""
-                if self._has_consecutive_no_reply(min_count=3):
-                    no_reply_until_call_block = """no_reply_until_call
-动作描述：
-保持沉默，直到有人直接叫你的名字
-当前话题不感兴趣时使用，或有人不喜欢你的发言时使用
-当你频繁选择no_reply时使用，表示话题暂时与你无关
-{{"action":"no_reply_until_call"}}
-"""
+                reply_action_example = '5.think_level表示思考深度，0表示该回复不需要思考和回忆，1表示该回复需要进行回忆和思考\n{{"action":"reply", "think_level":数值等级(0或1), "target_messamge_id":"消息id(m+数字)"}}'
 
-                planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
-                prompt = planner_prompt_template.format(
-                    time_block=time_block,
-                    chat_context_description=chat_context_description,
-                    chat_content_block=chat_content_block,
-                    actions_before_now_block=actions_before_now_block,
-                    action_options_text=action_options_block,
-                    no_reply_until_call_block=no_reply_until_call_block,
-                    moderation_prompt=moderation_prompt_block,
-                    name_block=name_block,
-                    interest=interest,
-                    plan_style=global_config.personality.plan_style,
-                )
+            planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
+            prompt = planner_prompt_template.format(
+                time_block=time_block,
+                chat_context_description=chat_context_description,
+                chat_content_block=chat_content_block,
+                actions_before_now_block=actions_before_now_block,
+                action_options_text=action_options_block,
+                moderation_prompt=moderation_prompt_block,
+                name_block=name_block,
+                interest=interest,
+                plan_style=global_config.personality.plan_style,
+                reply_action_example=reply_action_example,
+            )
 
             return prompt, message_id_list
         except Exception as e:
@@ -754,20 +683,20 @@ class ActionPlanner:
                 json_content_start = json_start_pos + 7  # ```json的长度
                 # 提取从```json之后到内容结尾的所有内容
                 incomplete_json_str = content[json_content_start:].strip()
-                
+
                 # 提取JSON之前的内容作为推理文本
                 if json_start_pos > 0:
                     reasoning_content = content[:json_start_pos].strip()
                     reasoning_content = re.sub(r"^//\s*", "", reasoning_content, flags=re.MULTILINE)
                     reasoning_content = reasoning_content.strip()
-                
+
                 if incomplete_json_str:
                     try:
                         # 清理可能的注释和格式问题
                         json_str = re.sub(r"//.*?\n", "\n", incomplete_json_str)
                         json_str = re.sub(r"/\*.*?\*/", "", json_str, flags=re.DOTALL)
                         json_str = json_str.strip()
-                        
+
                         if json_str:
                             # 尝试按行分割，每行可能是一个JSON对象
                             lines = [line.strip() for line in json_str.split("\n") if line.strip()]
@@ -782,7 +711,7 @@ class ActionPlanner:
                                                 json_objects.append(item)
                                 except json.JSONDecodeError:
                                     pass
-                            
+
                             # 如果按行解析没有成功，尝试将整个块作为一个JSON对象或数组
                             if not json_objects:
                                 try:

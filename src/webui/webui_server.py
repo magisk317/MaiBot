@@ -5,6 +5,7 @@ import asyncio
 import mimetypes
 from pathlib import Path
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from uvicorn import Config, Server as UvicornServer
 from src.common.logger import get_logger
@@ -20,25 +21,39 @@ class WebUIServer:
         self.port = port
         self.app = FastAPI(title="MaiBot WebUI")
         self._server = None
-        
-        # 配置防爬虫中间件（需要在CORS之前注册）
-        self._setup_anti_crawler()
-        
+
+        # 配置 CORS（支持开发环境跨域请求）
+        self._setup_cors()
+
         # 显示 Access Token
         self._show_access_token()
-        
+
         # 重要：先注册 API 路由，再设置静态文件
         self._register_api_routes()
         self._setup_static_files()
-        
-        # 注册robots.txt路由
-        self._setup_robots_txt()
+
+    def _setup_cors(self):
+        """配置 CORS 中间件"""
+        # 开发环境需要允许前端开发服务器的跨域请求
+        self.app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[
+                "http://localhost:5173",  # Vite 开发服务器
+                "http://127.0.0.1:5173",
+                "http://localhost:8001",  # 生产环境
+                "http://127.0.0.1:8001",
+            ],
+            allow_credentials=True,  # 允许携带 Cookie
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+        logger.debug("✅ CORS 中间件已配置")
 
     def _show_access_token(self):
         """显示 WebUI Access Token"""
         try:
             from src.webui.token_manager import get_token_manager
-            
+
             token_manager = get_token_manager()
             current_token = token_manager.get_token()
             logger.info(f"🔑 WebUI Access Token: {current_token}")
@@ -75,7 +90,7 @@ class WebUIServer:
             # 如果是根路径，直接返回 index.html
             if not full_path or full_path == "/":
                 return FileResponse(static_path / "index.html", media_type="text/html")
-            
+
             # 检查是否是静态文件
             file_path = static_path / full_path
             if file_path.is_file() and file_path.exists():
@@ -88,62 +103,22 @@ class WebUIServer:
 
         logger.info(f"✅ WebUI 静态文件服务已配置: {static_path}")
 
-    def _setup_anti_crawler(self):
-        """配置防爬虫中间件"""
-        try:
-            from src.webui.anti_crawler import AntiCrawlerMiddleware
-            
-            # 从环境变量读取防爬虫模式（false/strict/loose/standard）
-            anti_crawler_mode = os.getenv("WEBUI_ANTI_CRAWLER_MODE", "standard").lower()
-            
-            # 注意：中间件按注册顺序反向执行，所以先注册的中间件后执行
-            # 我们需要在CORS之前注册，这样防爬虫检查会在CORS之前执行
-            self.app.add_middleware(
-                AntiCrawlerMiddleware,
-                mode=anti_crawler_mode
-            )
-            
-            mode_descriptions = {
-                "false": "已禁用",
-                "strict": "严格模式",
-                "loose": "宽松模式",
-                "standard": "标准模式"
-            }
-            mode_desc = mode_descriptions.get(anti_crawler_mode, "标准模式")
-            logger.info(f"🛡️ 防爬虫中间件已配置: {mode_desc}")
-        except Exception as e:
-            logger.error(f"❌ 配置防爬虫中间件失败: {e}", exc_info=True)
-
-    def _setup_robots_txt(self):
-        """设置robots.txt路由"""
-        try:
-            from src.webui.anti_crawler import create_robots_txt_response
-            
-            @self.app.get("/robots.txt", include_in_schema=False)
-            async def robots_txt():
-                """返回robots.txt，禁止所有爬虫"""
-                return create_robots_txt_response()
-            
-            logger.debug("✅ robots.txt 路由已注册")
-        except Exception as e:
-            logger.error(f"❌ 注册robots.txt路由失败: {e}", exc_info=True)
-
     def _register_api_routes(self):
         """注册所有 WebUI API 路由"""
         try:
             # 导入所有 WebUI 路由
             from src.webui.routes import router as webui_router
             from src.webui.logs_ws import router as logs_router
-            
-            logger.info("开始导入 knowledge_routes...")
             from src.webui.knowledge_routes import router as knowledge_router
-            logger.info("knowledge_routes 导入成功")
+
+            # 导入本地聊天室路由
+            from src.webui.chat_routes import router as chat_router
 
             # 注册路由
             self.app.include_router(webui_router)
             self.app.include_router(logs_router)
             self.app.include_router(knowledge_router)
-            logger.info(f"knowledge_router 路由前缀: {knowledge_router.prefix}")
+            self.app.include_router(chat_router)
 
             logger.info("✅ WebUI API 路由已注册")
         except Exception as e:
@@ -151,6 +126,16 @@ class WebUIServer:
 
     async def start(self):
         """启动服务器"""
+        # 预先检查端口是否可用
+        if not self._check_port_available():
+            error_msg = f"❌ WebUI 服务器启动失败: 端口 {self.port} 已被占用"
+            logger.error(error_msg)
+            logger.error(f"💡 请检查是否有其他程序正在使用端口 {self.port}")
+            logger.error("💡 可以通过环境变量 WEBUI_PORT 修改 WebUI 端口")
+            logger.error(f"💡 Windows 用户可以运行: netstat -ano | findstr :{self.port}")
+            logger.error(f"💡 Linux/Mac 用户可以运行: lsof -i :{self.port}")
+            raise OSError(f"端口 {self.port} 已被占用，无法启动 WebUI 服务器")
+
         config = Config(
             app=self.app,
             host=self.host,
@@ -162,12 +147,36 @@ class WebUIServer:
 
         logger.info("🌐 WebUI 服务器启动中...")
         logger.info(f"🌐 访问地址: http://{self.host}:{self.port}")
+        if self.host == "0.0.0.0":
+            logger.info(f"本机访问请使用 http://localhost:{self.port}")
 
         try:
             await self._server.serve()
-        except Exception as e:
-            logger.error(f"❌ WebUI 服务器运行错误: {e}")
+        except OSError as e:
+            # 处理端口绑定相关的错误
+            if "address already in use" in str(e).lower() or e.errno in (98, 10048):  # 98: Linux, 10048: Windows
+                logger.error(f"❌ WebUI 服务器启动失败: 端口 {self.port} 已被占用")
+                logger.error(f"💡 请检查是否有其他程序正在使用端口 {self.port}")
+                logger.error("💡 可以通过环境变量 WEBUI_PORT 修改 WebUI 端口")
+            else:
+                logger.error(f"❌ WebUI 服务器启动失败 (网络错误): {e}")
             raise
+        except Exception as e:
+            logger.error(f"❌ WebUI 服务器运行错误: {e}", exc_info=True)
+            raise
+
+    def _check_port_available(self) -> bool:
+        """检查端口是否可用"""
+        import socket
+
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(1)
+                # 尝试绑定端口
+                s.bind((self.host if self.host != "0.0.0.0" else "127.0.0.1", self.port))
+                return True
+        except OSError:
+            return False
 
     async def shutdown(self):
         """关闭服务器"""

@@ -25,6 +25,7 @@ run_na.bat
 run_all_in_wt.bat
 run.bat
 log_debug/
+NapCat.Shell.Windows.OneKey
 run_amds.bat
 run_none.bat
 docs-mai/
@@ -34,9 +35,6 @@ message_queue_content.bat
 message_queue_window.bat
 message_queue_window.txt
 queue_update.txt
-memory_graph.gml
-/src/tools/tool_can_use/auto_create_tool.py
-/src/tools/tool_can_use/execute_python_code_tool.py
 .env
 .env.*
 .cursor
@@ -47,9 +45,6 @@ config/lpmm_config.toml
 config/lpmm_config.toml.bak
 template/compare/bot_config_template.toml
 template/compare/model_config_template.toml
-（测试版）麦麦生成人格.bat
-（临时版）麦麦开始学习.bat
-src/plugins/utils/statistic.py
 CLAUDE.md
 MaiBot-Dashboard/
 cloudflare-workers/
@@ -326,6 +321,7 @@ run_pet.bat
 !/plugins/emoji_manage_plugin
 !/plugins/take_picture_plugin
 !/plugins/deep_think
+!/plugins/MaiBot_MCPBridgePlugin
 !/plugins/ChatFrequency/
 !/plugins/__init__.py
 
@@ -333,4 +329,3 @@ config.toml
 
 interested_rates.txt
 MaiBot.code-workspace
-*.lock

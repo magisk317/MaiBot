@@ -5,14 +5,15 @@
 """
 
 import os
-import sys
 import time
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from src.config.config import MMC_VERSION
+from src.common.logger import get_logger
 
 router = APIRouter(prefix="/system", tags=["system"])
+logger = get_logger("webui_system")
 
 # 记录启动时间
 _start_time = time.time()
@@ -39,22 +40,23 @@ async def restart_maibot():
     """
     重启麦麦主程序
 
-    使用 os.execv 重启当前进程，配置更改将在重启后生效。
+    请求重启当前进程，配置更改将在重启后生效。
     注意：此操作会使麦麦暂时离线。
     """
     import asyncio
-    
+
     try:
         # 记录重启操作
-        print(f"[{datetime.now()}] WebUI 触发重启操作")
+        logger.info("WebUI 触发重启操作")
 
         # 定义延迟重启的异步任务
         async def delayed_restart():
             await asyncio.sleep(0.5)  # 延迟0.5秒，确保响应已发送
-            python = sys.executable
-            args = [python] + sys.argv
-            os.execv(python, args)
-        
+            # 使用 os._exit(42) 退出当前进程，配合外部 runner 脚本进行重启
+            # 42 是约定的重启状态码
+            logger.info("WebUI 请求重启，退出代码 42")
+            os._exit(42)
+
         # 创建后台任务执行重启
         asyncio.create_task(delayed_restart())
 
