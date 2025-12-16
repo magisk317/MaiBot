@@ -370,6 +370,7 @@ class HeartFChatting:
                 action_to_use_info = await self.action_planner.plan(
                     loop_start_time=self.last_read_time,
                     available_actions=available_actions,
+                    force_reply_message=force_reply_message,
                 )
 
             logger.info(
