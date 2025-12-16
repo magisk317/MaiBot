@@ -154,6 +154,10 @@ def _parse_allowed_ips(ip_string: str) -> list:
         ip_entry = ip_entry.strip()  # 去除空格
         if not ip_entry:
             continue
+        
+        # 跳过注释行（以#开头）
+        if ip_entry.startswith("#"):
+            continue
 
         # 检查通配符格式（包含*）
         if "*" in ip_entry:

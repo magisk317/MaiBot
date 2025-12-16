@@ -137,8 +137,8 @@ async def verify_token(
         if is_valid:
             # 认证成功，重置失败计数
             rate_limiter.reset_failures(request)
-            # 设置 HttpOnly Cookie
-            set_auth_cookie(response, request_body.token)
+            # 设置 HttpOnly Cookie（传入 request 以检测协议）
+            set_auth_cookie(response, request_body.token, request)
             # 同时返回首次配置状态，避免额外请求
             is_first_setup = token_manager.is_first_setup()
             return TokenVerifyResponse(valid=True, message="Token 验证成功", is_first_setup=is_first_setup)

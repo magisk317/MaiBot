@@ -24,17 +24,22 @@ def _is_secure_environment() -> bool:
         bool: 如果应该使用 secure cookie 则返回 True
     """
     # 检查环境变量
-    if os.environ.get("WEBUI_SECURE_COOKIE", "").lower() in ("true", "1", "yes"):
+    secure_cookie_env = os.environ.get("WEBUI_SECURE_COOKIE", "")
+    if secure_cookie_env.lower() in ("true", "1", "yes"):
+        logger.info(f"WEBUI_SECURE_COOKIE 设置为 {secure_cookie_env}，启用 secure cookie")
         return True
-    if os.environ.get("WEBUI_SECURE_COOKIE", "").lower() in ("false", "0", "no"):
+    if secure_cookie_env.lower() in ("false", "0", "no"):
+        logger.info(f"WEBUI_SECURE_COOKIE 设置为 {secure_cookie_env}，禁用 secure cookie")
         return False
 
     # 检查是否是生产环境
     env = os.environ.get("WEBUI_MODE", "").lower()
     if env in ("production", "prod"):
+        logger.info(f"WEBUI_MODE 设置为 {env}，启用 secure cookie")
         return True
 
     # 默认：开发环境不启用（因为通常是 HTTP）
+    logger.debug(f"未设置特殊环境变量 (WEBUI_SECURE_COOKIE={secure_cookie_env}, WEBUI_MODE={env})，禁用 secure cookie")
     return False
 
 
@@ -77,17 +82,35 @@ def get_current_token(
     return token
 
 
-def set_auth_cookie(response: Response, token: str) -> None:
+def set_auth_cookie(response: Response, token: str, request: Optional[Request] = None) -> None:
     """
     设置认证 Cookie
 
     Args:
         response: FastAPI Response 对象
         token: 要设置的 token
+        request: FastAPI Request 对象（可选，用于检测协议）
     """
-    # 根据环境决定安全设置
+    # 根据环境和实际请求协议决定安全设置
     is_secure = _is_secure_environment()
-
+    
+    # 如果提供了 request，检测实际使用的协议
+    if request:
+        # 检查 X-Forwarded-Proto header（代理/负载均衡器）
+        forwarded_proto = request.headers.get("x-forwarded-proto", "").lower()
+        if forwarded_proto:
+            is_https = forwarded_proto == "https"
+            logger.debug(f"检测到 X-Forwarded-Proto: {forwarded_proto}, is_https={is_https}")
+        else:
+            # 检查 request.url.scheme
+            is_https = request.url.scheme == "https"
+            logger.debug(f"检测到 scheme: {request.url.scheme}, is_https={is_https}")
+        
+        # 如果是 HTTP 连接，强制禁用 secure 标志
+        if not is_https and is_secure:
+            logger.warning("检测到 HTTP 连接但配置要求 secure cookie，强制禁用 secure 以允许 cookie 工作")
+            is_secure = False
+    
     # 设置 Cookie
     response.set_cookie(
         key=COOKIE_NAME,
@@ -95,7 +118,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
         max_age=COOKIE_MAX_AGE,
         httponly=True,  # 防止 JS 读取，阻止 XSS 窃取
         samesite="lax",  # 使用 lax 以兼容更多场景（开发和生产）
-        secure=is_secure,  # 生产环境强制 HTTPS
+        secure=is_secure,  # 根据实际协议决定
         path="/",  # 确保 Cookie 在所有路径下可用
     )
     
