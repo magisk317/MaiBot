@@ -88,16 +88,19 @@ def set_auth_cookie(response: Response, token: str) -> None:
     # 根据环境决定安全设置
     is_secure = _is_secure_environment()
 
+    # 设置 Cookie
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         max_age=COOKIE_MAX_AGE,
         httponly=True,  # 防止 JS 读取，阻止 XSS 窃取
-        samesite="strict" if is_secure else "lax",  # 生产环境使用 strict 防止 CSRF
+        samesite="lax",  # 使用 lax 以兼容更多场景（开发和生产）
         secure=is_secure,  # 生产环境强制 HTTPS
         path="/",  # 确保 Cookie 在所有路径下可用
     )
-    logger.debug(f"已设置认证 Cookie: {token[:8]}... (secure={is_secure})")
+    
+    logger.info(f"已设置认证 Cookie: {token[:8]}... (secure={is_secure}, samesite=lax, httponly=True, path=/, max_age={COOKIE_MAX_AGE})")
+    logger.debug(f"完整 token 前缀: {token[:20]}...")
 
 
 def clear_auth_cookie(response: Response) -> None:

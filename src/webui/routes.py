@@ -195,23 +195,33 @@ async def check_auth_status(
     """
     try:
         token = None
+        
+        # 记录请求信息用于调试
+        logger.debug(f"检查认证状态 - Cookie: {maibot_session[:20] if maibot_session else 'None'}..., Authorization: {'Present' if authorization else 'None'}")
 
         # 优先从 Cookie 获取
         if maibot_session:
             token = maibot_session
+            logger.debug("使用 Cookie 中的 token")
         # 其次从 Header 获取
         elif authorization and authorization.startswith("Bearer "):
             token = authorization.replace("Bearer ", "")
+            logger.debug("使用 Header 中的 token")
 
         if not token:
+            logger.debug("未找到 token，返回未认证")
             return {"authenticated": False}
 
         token_manager = get_token_manager()
-        if token_manager.verify_token(token):
+        is_valid = token_manager.verify_token(token)
+        logger.debug(f"Token 验证结果: {is_valid}")
+        
+        if is_valid:
             return {"authenticated": True}
         else:
             return {"authenticated": False}
-    except Exception:
+    except Exception as e:
+        logger.error(f"认证检查失败: {e}", exc_info=True)
         return {"authenticated": False}
 
 
