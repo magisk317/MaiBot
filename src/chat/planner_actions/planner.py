@@ -267,6 +267,7 @@ class ActionPlanner:
         self,
         available_actions: Dict[str, ActionInfo],
         loop_start_time: float = 0.0,
+        force_reply_message: Optional["DatabaseMessages"] = None,
     ) -> List[ActionPlannerInfo]:
         # sourcery skip: use-named-expression
         """
@@ -324,6 +325,34 @@ class ActionPlanner:
             available_actions=available_actions,
             loop_start_time=loop_start_time,
         )
+
+        # 如果有强制回复消息，确保回复该消息
+        if force_reply_message:
+            # 检查是否已经有回复该消息的 action
+            has_reply_to_force_message = False
+            for action in actions:
+                if action.action_type == "reply" and action.action_message and action.action_message.message_id == force_reply_message.message_id:
+                    has_reply_to_force_message = True
+                    break
+            
+            # 如果没有回复该消息，强制添加回复 action
+            if not has_reply_to_force_message:
+                # 移除所有 no_reply action（如果有）
+                actions = [a for a in actions if a.action_type != "no_reply"]
+                
+                # 创建强制回复 action
+                available_actions_dict = dict(current_available_actions)
+                force_reply_action = ActionPlannerInfo(
+                    action_type="reply",
+                    reasoning="用户提及了我，必须回复该消息",
+                    action_data={"loop_start_time": loop_start_time},
+                    action_message=force_reply_message,
+                    available_actions=available_actions_dict,
+                    action_reasoning=None,
+                )
+                # 将强制回复 action 放在最前面
+                actions.insert(0, force_reply_action)
+                logger.info(f"{self.log_prefix} 检测到强制回复消息，已添加回复动作")
 
         logger.info(
             f"{self.log_prefix}Planner:{reasoning}。选择了{len(actions)}个动作: {' '.join([a.action_type for a in actions])}"
