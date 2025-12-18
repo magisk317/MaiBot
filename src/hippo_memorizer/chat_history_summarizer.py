@@ -7,6 +7,7 @@ import asyncio
 import json
 import time
 import re
+import difflib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from dataclasses import dataclass, field
@@ -30,16 +31,18 @@ HIPPO_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "hippo_memorize
 def init_prompt():
     """初始化提示词模板"""
 
-    topic_analysis_prompt = """
-【历史话题标题列表】（仅标题，不含具体内容）：
+    topic_analysis_prompt = """【历史话题标题列表】（仅标题，不含具体内容）：
 {history_topics_block}
+【历史话题标题列表结束】
 
 【本次聊天记录】（每条消息前有编号，用于后续引用）：
 {messages_block}
+【本次聊天记录结束】
 
 请完成以下任务：
 **识别话题**
 1. 识别【本次聊天记录】中正在进行的一个或多个话题；
+2. 【本次聊天记录】的中的消息可能与历史话题有关，也可能毫无关联。
 2. 判断【历史话题标题列表】中的话题是否在【本次聊天记录】中出现，如果出现，则直接使用该历史话题标题字符串；
 
 **选取消息**
@@ -316,7 +319,9 @@ class ChatHistorySummarizer:
                 before_count = len(self.current_batch.messages)
                 self.current_batch.messages.extend(new_messages)
                 self.current_batch.end_time = current_time
-                logger.info(f"{self.log_prefix} 更新聊天检查批次: {before_count} -> {len(self.current_batch.messages)} 条消息")
+                logger.info(
+                    f"{self.log_prefix} 更新聊天检查批次: {before_count} -> {len(self.current_batch.messages)} 条消息"
+                )
                 # 更新批次后持久化
                 self._persist_topic_cache()
             else:
@@ -362,9 +367,7 @@ class ChatHistorySummarizer:
         else:
             time_str = f"{time_since_last_check / 3600:.1f}小时"
 
-        logger.debug(
-            f"{self.log_prefix} 批次状态检查 | 消息数: {message_count} | 距上次检查: {time_str}"
-        )
+        logger.debug(f"{self.log_prefix} 批次状态检查 | 消息数: {message_count} | 距上次检查: {time_str}")
 
         # 检查“话题检查”触发条件
         should_check = False
@@ -374,10 +377,10 @@ class ChatHistorySummarizer:
             should_check = True
             logger.info(f"{self.log_prefix} 触发检查条件: 消息数量达到 {message_count} 条（阈值: 100条）")
 
-        # 条件2: 距离上一次检查 > 3600 秒（1小时），触发一次检查
-        elif time_since_last_check > 2400:
+        # 条件2: 距离上一次检查 > 3600 * 8 秒（8小时）且消息数量 >= 20 条，触发一次检查
+        elif time_since_last_check > 3600 * 8 and message_count >= 20:
             should_check = True
-            logger.info(f"{self.log_prefix} 触发检查条件: 距上次检查 {time_str}（阈值: 1小时）")
+            logger.info(f"{self.log_prefix} 触发检查条件: 距上次检查 {time_str}（阈值: 8小时）且消息数量达到 {message_count} 条（阈值: 20条）")
 
         if should_check:
             await self._run_topic_check_and_update_cache(messages)
@@ -414,7 +417,7 @@ class ChatHistorySummarizer:
         # 说明 bot 没有参与这段对话，不应该记录
         bot_user_id = str(global_config.bot.qq_account)
         has_bot_message = False
-        
+
         for msg in messages:
             if msg.user_info.user_id == bot_user_id:
                 has_bot_message = True
@@ -427,19 +430,62 @@ class ChatHistorySummarizer:
             return
 
         # 2. 构造编号后的消息字符串和参与者信息
-        numbered_lines, index_to_msg_str, index_to_msg_text, index_to_participants = self._build_numbered_messages_for_llm(messages)
-
-        # 3. 调用 LLM 识别话题，并得到 topic -> indices
-        existing_topics = list(self.topic_cache.keys())
-        success, topic_to_indices = await self._analyze_topics_with_llm(
-            numbered_lines=numbered_lines,
-            existing_topics=existing_topics,
+        numbered_lines, index_to_msg_str, index_to_msg_text, index_to_participants = (
+            self._build_numbered_messages_for_llm(messages)
         )
 
+        # 3. 调用 LLM 识别话题，并得到 topic -> indices（失败时最多重试 3 次）
+        existing_topics = list(self.topic_cache.keys())
+        max_retries = 3
+        attempt = 0
+        success = False
+        topic_to_indices: Dict[str, List[int]] = {}
+
+        while attempt < max_retries:
+            attempt += 1
+            success, topic_to_indices = await self._analyze_topics_with_llm(
+                numbered_lines=numbered_lines,
+                existing_topics=existing_topics,
+            )
+
+            if success and topic_to_indices:
+                if attempt > 1:
+                    logger.info(
+                        f"{self.log_prefix} 话题识别在第 {attempt} 次重试后成功 | 话题数: {len(topic_to_indices)}"
+                    )
+                break
+
+            logger.warning(
+                f"{self.log_prefix} 话题识别失败或无有效话题，第 {attempt} 次尝试失败"
+                + ("" if attempt >= max_retries else "，准备重试")
+            )
+
         if not success or not topic_to_indices:
-            logger.warning(f"{self.log_prefix} 话题识别失败或无有效话题，本次检查忽略")
-            # 即使识别失败，也认为是一次“检查”，但不更新 no_update_checks（保持原状）
+            logger.error(f"{self.log_prefix} 话题识别连续 {max_retries} 次失败或始终无有效话题，本次检查放弃")
+            # 即使识别失败，也认为是一次"检查"，但不更新 no_update_checks（保持原状）
             return
+
+        # 3.5. 检查新话题是否与历史话题相似（相似度>=90%则使用历史标题）
+        topic_mapping = self._build_topic_mapping(topic_to_indices, similarity_threshold=0.9)
+
+        # 应用话题映射：将相似的新话题标题替换为历史话题标题
+        if topic_mapping:
+            new_topic_to_indices: Dict[str, List[int]] = {}
+            for new_topic, indices in topic_to_indices.items():
+                # 如果这个新话题需要映射到历史话题
+                if new_topic in topic_mapping:
+                    historical_topic = topic_mapping[new_topic]
+                    # 如果历史话题已经存在，合并消息索引
+                    if historical_topic in new_topic_to_indices:
+                        # 合并索引并去重
+                        combined_indices = list(set(new_topic_to_indices[historical_topic] + indices))
+                        new_topic_to_indices[historical_topic] = combined_indices
+                    else:
+                        new_topic_to_indices[historical_topic] = indices
+                else:
+                    # 不需要映射，保持原样
+                    new_topic_to_indices[new_topic] = indices
+            topic_to_indices = new_topic_to_indices
 
         # 4. 统计哪些话题在本次检查中有新增内容
         updated_topics: Set[str] = set()
@@ -506,6 +552,71 @@ class ChatHistorySummarizer:
             finally:
                 # 无论成功与否，都从缓存中删除，避免重复
                 self.topic_cache.pop(topic, None)
+
+    def _find_most_similar_topic(
+        self, new_topic: str, existing_topics: List[str], similarity_threshold: float = 0.9
+    ) -> Optional[tuple[str, float]]:
+        """
+        查找与给定新话题最相似的历史话题
+
+        Args:
+            new_topic: 新话题标题
+            existing_topics: 历史话题标题列表
+            similarity_threshold: 相似度阈值，默认0.9（90%）
+
+        Returns:
+            Optional[tuple[str, float]]: 如果找到相似度>=阈值的历史话题，返回(历史话题标题, 相似度)，
+                                         否则返回None
+        """
+        if not existing_topics:
+            return None
+
+        best_match = None
+        best_similarity = 0.0
+
+        for existing_topic in existing_topics:
+            similarity = difflib.SequenceMatcher(None, new_topic, existing_topic).ratio()
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = existing_topic
+
+        # 如果相似度达到阈值，返回匹配结果
+        if best_match and best_similarity >= similarity_threshold:
+            return (best_match, best_similarity)
+
+        return None
+
+    def _build_topic_mapping(
+        self, topic_to_indices: Dict[str, List[int]], similarity_threshold: float = 0.9
+    ) -> Dict[str, str]:
+        """
+        构建新话题到历史话题的映射（如果相似度>=阈值）
+
+        Args:
+            topic_to_indices: 新话题到消息索引的映射
+            similarity_threshold: 相似度阈值，默认0.9（90%）
+
+        Returns:
+            Dict[str, str]: 新话题 -> 历史话题的映射字典
+        """
+        existing_topics_list = list(self.topic_cache.keys())
+        topic_mapping: Dict[str, str] = {}
+
+        for new_topic in topic_to_indices.keys():
+            # 如果新话题已经在历史话题中，不需要检查
+            if new_topic in existing_topics_list:
+                continue
+
+            # 查找最相似的历史话题
+            result = self._find_most_similar_topic(new_topic, existing_topics_list, similarity_threshold)
+            if result:
+                historical_topic, similarity = result
+                topic_mapping[new_topic] = historical_topic
+                logger.info(
+                    f"{self.log_prefix} 话题相似度检查: '{new_topic}' 与历史话题 '{historical_topic}' 相似度 {similarity:.2%}，使用历史标题"
+                )
+
+        return topic_mapping
 
     def _build_numbered_messages_for_llm(
         self, messages: List[DatabaseMessages]
@@ -589,9 +700,7 @@ class ChatHistorySummarizer:
         if not numbered_lines:
             return False, {}
 
-        history_topics_block = (
-            "\n".join(f"- {t}" for t in existing_topics) if existing_topics else "（当前无历史话题）"
-        )
+        history_topics_block = "\n".join(f"- {t}" for t in existing_topics) if existing_topics else "（当前无历史话题）"
         messages_block = "\n".join(numbered_lines)
 
         prompt = await global_prompt_manager.format_prompt(
@@ -603,8 +712,7 @@ class ChatHistorySummarizer:
         try:
             response, _ = await self.summarizer_llm.generate_response_async(
                 prompt=prompt,
-                temperature=0.2,
-                max_tokens=800,
+                temperature=0.3,
             )
 
             logger.info(f"{self.log_prefix} 话题识别LLM Prompt: {prompt}")
@@ -614,17 +722,17 @@ class ChatHistorySummarizer:
             json_str = None
             json_pattern = r"```json\s*(.*?)\s*```"
             matches = re.findall(json_pattern, response, re.DOTALL)
-            
+
             if matches:
                 # 找到JSON代码块，使用第一个匹配
                 json_str = matches[0].strip()
             else:
                 # 如果没有找到代码块，尝试查找JSON数组的开始和结束位置
                 # 查找第一个 [ 和最后一个 ]
-                start_idx = response.find('[')
-                end_idx = response.rfind(']')
+                start_idx = response.find("[")
+                end_idx = response.rfind("]")
                 if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                    json_str = response[start_idx:end_idx + 1].strip()
+                    json_str = response[start_idx : end_idx + 1].strip()
                 else:
                     # 如果还是找不到，尝试直接使用整个响应（移除可能的markdown标记）
                     json_str = response.strip()
@@ -921,4 +1029,3 @@ class ChatHistorySummarizer:
 
 
 init_prompt()
-

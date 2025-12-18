@@ -8,17 +8,29 @@
 import time
 import uuid
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends, Cookie, Header
 from pydantic import BaseModel
 
 from src.common.logger import get_logger
 from src.common.database.database_model import Messages, PersonInfo
 from src.config.config import global_config
 from src.chat.message_receive.bot import chat_bot
+from src.webui.auth import verify_auth_token_from_cookie_or_header
+from src.webui.token_manager import get_token_manager
+from src.webui.ws_auth import verify_ws_token
 
 logger = get_logger("webui.chat")
 
 router = APIRouter(prefix="/api/chat", tags=["LocalChat"])
+
+
+def require_auth(
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> bool:
+    """认证依赖：验证用户是否已登录"""
+    return verify_auth_token_from_cookie_or_header(maibot_session, authorization)
+
 
 # WebUI 聊天的虚拟群组 ID
 WEBUI_CHAT_GROUP_ID = "webui_local_chat"
@@ -63,14 +75,14 @@ class ChatHistoryManager:
 
     def _message_to_dict(self, msg: Messages, group_id: Optional[str] = None) -> Dict[str, Any]:
         """将数据库消息转换为前端格式
-        
+
         Args:
             msg: 数据库消息对象
             group_id: 群 ID，用于判断是否是虚拟群
         """
         # 判断是否是机器人消息
         user_id = msg.user_id or ""
-        
+
         # 对于虚拟群，通过比较机器人 QQ 账号来判断
         # 对于普通 WebUI 群，检查 user_id 是否以 webui_ 开头
         if group_id and group_id.startswith(VIRTUAL_GROUP_ID_PREFIX):
@@ -256,6 +268,7 @@ async def get_chat_history(
     limit: int = Query(default=50, ge=1, le=200),
     user_id: Optional[str] = Query(default=None),  # 保留参数兼容性，但不用于过滤
     group_id: Optional[str] = Query(default=None),  # 可选：指定群 ID 获取历史
+    _auth: bool = Depends(require_auth),
 ):
     """获取聊天历史记录
 
@@ -272,7 +285,7 @@ async def get_chat_history(
 
 
 @router.get("/platforms")
-async def get_available_platforms():
+async def get_available_platforms(_auth: bool = Depends(require_auth)):
     """获取可用平台列表
 
     从 PersonInfo 表中获取所有已知的平台
@@ -303,6 +316,7 @@ async def get_persons_by_platform(
     platform: str = Query(..., description="平台名称"),
     search: Optional[str] = Query(default=None, description="搜索关键词"),
     limit: int = Query(default=50, ge=1, le=200),
+    _auth: bool = Depends(require_auth),
 ):
     """获取指定平台的用户列表
 
@@ -350,7 +364,7 @@ async def get_persons_by_platform(
 
 
 @router.delete("/history")
-async def clear_chat_history(group_id: Optional[str] = Query(default=None)):
+async def clear_chat_history(group_id: Optional[str] = Query(default=None), _auth: bool = Depends(require_auth)):
     """清空聊天历史记录
 
     Args:
@@ -372,6 +386,7 @@ async def websocket_chat(
     person_id: Optional[str] = Query(default=None),
     group_name: Optional[str] = Query(default=None),
     group_id: Optional[str] = Query(default=None),  # 前端传递的稳定 group_id
+    token: Optional[str] = Query(default=None),  # 认证 token
 ):
     """WebSocket 聊天端点
 
@@ -382,9 +397,45 @@ async def websocket_chat(
         person_id: 虚拟身份模式的用户 person_id（可选）
         group_name: 虚拟身份模式的群名（可选）
         group_id: 虚拟身份模式的群 ID（可选，由前端生成并持久化）
+        token: 认证 token（可选，也可从 Cookie 获取）
 
     虚拟身份模式可通过 URL 参数直接配置，或通过消息中的 set_virtual_identity 配置
+
+    支持三种认证方式（按优先级）：
+    1. query 参数 token（推荐，通过 /api/webui/ws-token 获取临时 token）
+    2. Cookie 中的 maibot_session
+    3. 直接使用 session token（兼容）
+
+    示例：ws://host/api/chat/ws?token=xxx
     """
+    is_authenticated = False
+
+    # 方式 1: 尝试验证临时 WebSocket token（推荐方式）
+    if token and verify_ws_token(token):
+        is_authenticated = True
+        logger.debug("聊天 WebSocket 使用临时 token 认证成功")
+
+    # 方式 2: 尝试从 Cookie 获取 session token
+    if not is_authenticated:
+        cookie_token = websocket.cookies.get("maibot_session")
+        if cookie_token:
+            token_manager = get_token_manager()
+            if token_manager.verify_token(cookie_token):
+                is_authenticated = True
+                logger.debug("聊天 WebSocket 使用 Cookie 认证成功")
+
+    # 方式 3: 尝试直接验证 query 参数作为 session token（兼容旧方式）
+    if not is_authenticated and token:
+        token_manager = get_token_manager()
+        if token_manager.verify_token(token):
+            is_authenticated = True
+            logger.debug("聊天 WebSocket 使用 session token 认证成功")
+
+    if not is_authenticated:
+        logger.warning("聊天 WebSocket 连接被拒绝：认证失败")
+        await websocket.close(code=4001, reason="认证失败，请重新登录")
+        return
+
     # 生成会话 ID（每次连接都是新的）
     session_id = str(uuid.uuid4())
 
@@ -414,7 +465,9 @@ async def websocket_chat(
                     group_id=virtual_group_id,
                     group_name=group_name or "WebUI虚拟群聊",
                 )
-                logger.info(f"虚拟身份模式已通过 URL 参数激活: {current_virtual_config.user_nickname} @ {current_virtual_config.platform}, group_id={virtual_group_id}")
+                logger.info(
+                    f"虚拟身份模式已通过 URL 参数激活: {current_virtual_config.user_nickname} @ {current_virtual_config.platform}, group_id={virtual_group_id}"
+                )
         except Exception as e:
             logger.warning(f"通过 URL 参数配置虚拟身份失败: {e}")
 
@@ -710,7 +763,7 @@ async def websocket_chat(
 
 
 @router.get("/info")
-async def get_chat_info():
+async def get_chat_info(_auth: bool = Depends(require_auth)):
     """获取聊天室信息"""
     return {
         "bot_name": global_config.bot.nickname,

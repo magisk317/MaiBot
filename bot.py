@@ -34,12 +34,16 @@ else:
         print(f"自动创建 .env 失败: {e}")
         raise
 
-initialize_logging()
+# 检查是否是 Worker 进程，只在 Worker 进程中输出详细的初始化信息
+# Runner 进程只需要基本的日志功能，不需要详细的初始化日志
+is_worker = os.environ.get("MAIBOT_WORKER_PROCESS") == "1"
+initialize_logging(verbose=is_worker)
 install(extra_lines=3)
 logger = get_logger("main")
 
 # 定义重启退出码
 RESTART_EXIT_CODE = 42
+
 
 def run_runner_process():
     """
@@ -55,25 +59,25 @@ def run_runner_process():
 
     while True:
         logger.info(f"正在启动 {script_file}...")
-        
+
         # 启动子进程 (Worker)
         # 使用 sys.executable 确保使用相同的 Python 解释器
         cmd = [python_executable, script_file] + sys.argv[1:]
-        
+
         process = subprocess.Popen(cmd, env=env)
-        
+
         try:
             # 等待子进程结束
             return_code = process.wait()
-            
+
             if return_code == RESTART_EXIT_CODE:
                 logger.info("检测到重启请求 (退出码 42)，正在重启...")
-                time.sleep(1) # 稍作等待
+                time.sleep(1)  # 稍作等待
                 continue
             else:
                 logger.info(f"程序已退出 (退出码 {return_code})")
                 sys.exit(return_code)
-                
+
         except KeyboardInterrupt:
             # 向子进程发送终止信号
             if process.poll() is None:
@@ -87,6 +91,7 @@ def run_runner_process():
                     process.kill()
             sys.exit(0)
 
+
 # 检查是否是 Worker 进程
 # 如果没有设置 MAIBOT_WORKER_PROCESS 环境变量，说明是直接运行的脚本，
 # 此时应该作为 Runner 运行。
@@ -99,8 +104,10 @@ if os.environ.get("MAIBOT_WORKER_PROCESS") != "1":
 # 以下是 Worker 进程的逻辑
 
 # 最早期初始化日志系统，确保所有后续模块都使用正确的日志格式
-# from src.common.logger import initialize_logging, get_logger, shutdown_logging  # noqa
-# initialize_logging()
+# 注意：Runner 进程已经在第 37 行初始化了日志系统，但 Worker 进程是独立进程，需要重新初始化
+# 由于 Runner 和 Worker 是不同进程，它们有独立的内存空间，所以都会初始化一次
+# 这是正常的，但为了避免重复的初始化日志，我们在 initialize_logging() 中添加了防重复机制
+# 不过由于是不同进程，每个进程仍会初始化一次，这是预期的行为
 
 from src.main import MainSystem  # noqa
 from src.manager.async_task_manager import async_task_manager  # noqa
@@ -143,7 +150,7 @@ def print_opensource_notice():
         "",
         f"{Fore.WHITE}  官方仓库: {Fore.BLUE}https://github.com/MaiM-with-u/MaiBot {Style.RESET_ALL}",
         f"{Fore.WHITE}  官方文档: {Fore.BLUE}https://docs.mai-mai.org {Style.RESET_ALL}",
-        f"{Fore.WHITE}  官方群聊: {Fore.BLUE}766798517{Style.RESET_ALL}",
+        f"{Fore.WHITE}  官方群聊: {Fore.BLUE}1006149251{Style.RESET_ALL}",
         f"{Fore.CYAN}{'─' * 70}{Style.RESET_ALL}",
         f"{Fore.RED}  ⚠ 将本软件作为「商品」倒卖、隐瞒开源性质均违反协议！{Style.RESET_ALL}",
         f"{Fore.CYAN}{'═' * 70}{Style.RESET_ALL}",
