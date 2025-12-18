@@ -145,16 +145,33 @@ class ExpressionSelector:
                 for expr in style_query
             ]
 
-            # 要求至少有10个 count > 1 的表达方式才进行选择
-            min_required = 10
+            # 要求至少有一定数量的 count > 1 的表达方式才进行“完整简单模式”选择
+            min_required = 8
             if len(style_exprs) < min_required:
+                # 高 count 样本不足：如果还有候选，就降级为随机选 3 个；如果一个都没有，则直接返回空
+                if not style_exprs:
+                    logger.info(
+                        f"聊天流 {chat_id} 没有满足 count > 1 且未被拒绝的表达方式，简单模式不进行选择"
+                    )
+                    # 完全没有高 count 样本时，退化为全量随机抽样（不进入LLM流程）
+                    fallback_num = min(3, max_num) if max_num > 0 else 3
+                    fallback_selected = self._random_expressions(chat_id, fallback_num)
+                    if fallback_selected:
+                        self.update_expressions_last_active_time(fallback_selected)
+                        selected_ids = [expr["id"] for expr in fallback_selected]
+                        logger.info(
+                            f"聊天流 {chat_id} 使用简单模式降级随机抽选 {len(fallback_selected)} 个表达（无 count>1 样本）"
+                        )
+                        return fallback_selected, selected_ids
+                    return [], []
                 logger.info(
-                    f"聊天流 {chat_id} count > 1 的表达方式不足 {min_required} 个（实际 {len(style_exprs)} 个），不进行选择"
+                    f"聊天流 {chat_id} count > 1 的表达方式不足 {min_required} 个（实际 {len(style_exprs)} 个），"
+                    f"简单模式降级为随机选择 3 个"
                 )
-                return [], []
-
-            # 固定选择5个
-            select_count = 5
+                select_count = min(3, len(style_exprs))
+            else:
+                # 高 count 数量达标时，固定选择 5 个
+                select_count = 5
             import random
 
             selected_style = random.sample(style_exprs, select_count)
@@ -308,20 +325,28 @@ class ExpressionSelector:
             select_random_count = 5
 
             # 检查数量要求
+            # 对于高 count 表达：如果数量不足，不再直接停止，而是仅跳过“高 count 优先选择”
             if len(high_count_exprs) < min_high_count:
                 logger.info(
-                    f"聊天流 {chat_id} count > 1 的表达方式不足 {min_high_count} 个（实际 {len(high_count_exprs)} 个），不进行选择"
+                    f"聊天流 {chat_id} count > 1 的表达方式不足 {min_high_count} 个（实际 {len(high_count_exprs)} 个），"
+                    f"将跳过高 count 优先选择，仅从全部表达中随机抽样"
                 )
-                return [], []
+                high_count_valid = False
+            else:
+                high_count_valid = True
 
+            # 总量不足仍然直接返回，避免样本过少导致选择质量过低
             if len(all_style_exprs) < min_total_count:
                 logger.info(
                     f"聊天流 {chat_id} 总表达方式不足 {min_total_count} 个（实际 {len(all_style_exprs)} 个），不进行选择"
                 )
                 return [], []
 
-            # 先选取高count的表达方式
-            selected_high = weighted_sample(high_count_exprs, min(len(high_count_exprs), select_high_count))
+            # 先选取高count的表达方式（如果数量达标）
+            if high_count_valid:
+                selected_high = weighted_sample(high_count_exprs, min(len(high_count_exprs), select_high_count))
+            else:
+                selected_high = []
 
             # 然后从所有表达方式中随机抽样（使用加权抽样）
             remaining_num = select_random_count

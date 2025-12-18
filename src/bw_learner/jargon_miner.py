@@ -759,8 +759,8 @@ class JargonMiner:
                 content_key = entry["content"]
                 
                 # 检查是否包含人物名称
-                logger.info(f"process_extracted_entries 检查是否包含人物名称: {content_key}")
-                logger.info(f"person_name_filter: {person_name_filter}")
+                # logger.info(f"process_extracted_entries 检查是否包含人物名称: {content_key}")
+                # logger.info(f"person_name_filter: {person_name_filter}")
                 if person_name_filter and person_name_filter(content_key):
                     logger.info(f"process_extracted_entries 跳过包含人物名称的黑话: {content_key}")
                     continue
@@ -885,7 +885,7 @@ class JargonMiner:
                 logger.info(f"[{self.stream_name}]疑似黑话: {jargon_str}")
 
             if saved or updated:
-                logger.info(f"jargon写入: 新增 {saved} 条，更新 {updated} 条，chat_id={self.chat_id}")
+                logger.debug(f"jargon写入: 新增 {saved} 条，更新 {updated} 条，chat_id={self.chat_id}")
         except Exception as e:
             logger.error(f"处理已提取的黑话条目失败: {e}")
 

@@ -198,21 +198,21 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
         List[str]: 分割和合并后的句子列表
     """
     # 预处理：处理多余的换行符
-    # 1. 将连续的换行符替换为单个换行符
+    # 1. 将连续的换行符替换为单个换行符（保留换行符用于分割）
     text = re.sub(r"\n\s*\n+", "\n", text)
-    # 2. 处理换行符和其他分隔符的组合
-    text = re.sub(r"\n\s*([，,。;\s])", r"\1", text)
-    text = re.sub(r"([，,。;\s])\s*\n", r"\1", text)
+    # 2. 处理换行符和其他分隔符的组合（保留换行符，删除其他分隔符）
+    text = re.sub(r"\n\s*([，,。;\s])", r"\n\1", text)
+    text = re.sub(r"([，,。;\s])\s*\n", r"\1\n", text)
 
-    # 处理两个汉字中间的换行符
-    text = re.sub(r"([\u4e00-\u9fff])\n([\u4e00-\u9fff])", r"\1。\2", text)
+    # 处理两个汉字中间的换行符（保留换行符，不替换为句号，让换行符强制分割）
+    # text = re.sub(r"([\u4e00-\u9fff])\n([\u4e00-\u9fff])", r"\1。\2", text)  # 注释掉，保留换行符用于分割
 
     len_text = len(text)
     if len_text < 3:
         return list(text) if random.random() < 0.01 else [text]
 
-    # 定义分隔符
-    separators = {"，", ",", " ", "。", ";"}
+    # 定义分隔符（包含换行符，换行符必须强制分割）
+    separators = {"，", ",", " ", "。", ";", "\n"}
     segments = []
     current_segment = ""
 
@@ -221,13 +221,27 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
     while i < len(text):
         char = text[i]
         if char in separators:
-            # 检查分割条件：如果空格左右都是英文字母、数字，或数字和英文之间，则不分割（仅对空格应用此规则）
-            can_split = True
-            if 0 < i < len(text) - 1:
-                prev_char = text[i - 1]
-                next_char = text[i + 1]
-                # 只对空格应用"不分割数字和数字、数字和英文、英文和数字、英文和英文之间的空格"规则
-                if char == " ":
+            # 换行符必须强制分割，不受其他规则影响
+            if char == "\n":
+                can_split = True
+            else:
+                # 检查分割条件
+                can_split = True
+                # 检查分隔符左右是否有冒号（中英文），如果有则不分割
+                if i > 0:
+                    prev_char = text[i - 1]
+                    if prev_char in {":", "："}:
+                        can_split = False
+                if i < len(text) - 1:
+                    next_char = text[i + 1]
+                    if next_char in {":", "："}:
+                        can_split = False
+                
+                # 如果左右没有冒号，再检查空格的特殊情况
+                if can_split and char == " " and i > 0 and i < len(text) - 1:
+                    prev_char = text[i - 1]
+                    next_char = text[i + 1]
+                    # 不分割数字和数字、数字和英文、英文和数字、英文和英文之间的空格
                     prev_is_alnum = prev_char.isdigit() or is_english_letter(prev_char)
                     next_is_alnum = next_char.isdigit() or is_english_letter(next_char)
                     if prev_is_alnum and next_is_alnum:
@@ -237,8 +251,8 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
                 # 只有当当前段不为空时才添加
                 if current_segment:
                     segments.append((current_segment, char))
-                # 如果当前段为空，但分隔符是空格，则也添加一个空段（保留空格）
-                elif char == " ":
+                # 如果当前段为空，但分隔符是空格或换行符，则也添加一个空段（保留分隔符）
+                elif char in {" ", "\n"}:
                     segments.append(("", char))
                 current_segment = ""
             else:

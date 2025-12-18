@@ -95,7 +95,7 @@ class MessageRecorder:
             self.last_extraction_time = extraction_end_time
 
             try:
-                logger.info(f"在聊天流 {self.chat_name} 开始统一消息提取和分发")
+                # logger.info(f"在聊天流 {self.chat_name} 开始统一消息提取和分发")
 
                 # 拉取提取窗口内的消息
                 messages = get_raw_msg_by_timestamp_with_chat_inclusive(

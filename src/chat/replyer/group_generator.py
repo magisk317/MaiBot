@@ -98,8 +98,10 @@ class DefaultReplyer:
             available_actions = {}
         try:
             # 3. 构建 Prompt
+            timing_logs = []
+            almost_zero_str = ""
             with Timer("构建Prompt", {}):  # 内部计时器，可选保留
-                prompt, selected_expressions = await self.build_prompt_reply_context(
+                prompt, selected_expressions, timing_logs, almost_zero_str = await self.build_prompt_reply_context(
                     extra_info=extra_info,
                     available_actions=available_actions,
                     chosen_actions=chosen_actions,
@@ -136,9 +138,22 @@ class DefaultReplyer:
                 content, reasoning_content, model_name, tool_call = await self.llm_generate_content(prompt)
                 # logger.debug(f"replyer生成内容: {content}")
 
-                logger.info(f"模型: [{model_name}][思考等级:{think_level}]生成内容: {content}")
-                if global_config.debug.show_replyer_reasoning and reasoning_content:
-                    logger.info(f"模型: [{model_name}][思考等级:{think_level}]生成推理:\n{reasoning_content}")
+                # 统一输出所有日志信息，使用try-except确保即使某个步骤出错也能输出
+                try:
+                    # 1. 输出回复准备日志
+                    timing_log_str = f"回复准备: {'; '.join(timing_logs)}; {almost_zero_str} <0.1s" if timing_logs or almost_zero_str else "回复准备: 无计时信息"
+                    logger.info(timing_log_str)
+                    # 2. 输出Prompt日志
+                    if global_config.debug.show_replyer_prompt:
+                        logger.info(f"\n{prompt}\n")
+                    else:
+                        logger.debug(f"\nreplyer_Prompt:{prompt}\n")
+                    # 3. 输出模型生成内容和推理日志
+                    logger.info(f"模型: [{model_name}][思考等级:{think_level}]生成内容: {content}")
+                    if global_config.debug.show_replyer_reasoning and reasoning_content:
+                        logger.info(f"模型: [{model_name}][思考等级:{think_level}]生成推理:\n{reasoning_content}")
+                except Exception as e:
+                    logger.warning(f"输出日志时出错: {e}")
 
                 llm_response.content = content
                 llm_response.reasoning = reasoning_content
@@ -162,6 +177,21 @@ class DefaultReplyer:
             except Exception as llm_e:
                 # 精简报错信息
                 logger.error(f"LLM 生成失败: {llm_e}")
+                # 即使LLM生成失败，也尝试输出已收集的日志信息
+                try:
+                    # 1. 输出回复准备日志
+                    timing_log_str = f"回复准备: {'; '.join(timing_logs)}; {almost_zero_str} <0.1s" if timing_logs or almost_zero_str else "回复准备: 无计时信息"
+                    logger.info(timing_log_str)
+                    # 2. 输出Prompt日志
+                    if global_config.debug.show_replyer_prompt:
+                        logger.info(f"\n{prompt}\n")
+                    else:
+                        logger.debug(f"\nreplyer_Prompt:{prompt}\n")
+                    # 3. 输出模型生成失败信息
+                    logger.info("模型生成失败，无法输出生成内容和推理")
+                except Exception as log_e:
+                    logger.warning(f"输出日志时出错: {log_e}")
+
                 return False, llm_response  # LLM 调用失败则无法生成回复
 
             return True, llm_response
@@ -705,7 +735,7 @@ class DefaultReplyer:
         enable_tool: bool = True,
         reply_time_point: Optional[float] = time.time(),
         think_level: int = 1,
-    ) -> Tuple[str, List[int]]:
+    ) -> Tuple[str, List[int], List[str], str]:
         """
         构建回复器上下文
 
@@ -838,7 +868,8 @@ class DefaultReplyer:
                 continue
 
             timing_logs.append(f"{chinese_name}: {duration:.1f}s")
-        logger.info(f"回复准备: {'; '.join(timing_logs)}; {almost_zero_str} <0.1s")
+        # 不再在这里输出日志，而是返回给调用者统一输出
+        # logger.info(f"回复准备: {'; '.join(timing_logs)}; {almost_zero_str} <0.1s")
 
         expression_habits_block, selected_expressions = results_dict["expression_habits"]
         expression_habits_block: str
@@ -915,7 +946,7 @@ class DefaultReplyer:
             memory_retrieval=memory_retrieval,
             chat_prompt=chat_prompt_block,
             planner_reasoning=planner_reasoning,
-        ), selected_expressions
+        ), selected_expressions, timing_logs, almost_zero_str
 
     async def build_prompt_rewrite_context(
         self,
@@ -1046,10 +1077,11 @@ class DefaultReplyer:
             # 直接使用已初始化的模型实例
             # logger.info(f"\n{prompt}\n")
 
-            if global_config.debug.show_replyer_prompt:
-                logger.info(f"\n{prompt}\n")
-            else:
-                logger.debug(f"\nreplyer_Prompt:{prompt}\n")
+            # 不再在这里输出日志，而是返回给调用者统一输出
+            # if global_config.debug.show_replyer_prompt:
+            #     logger.info(f"\n{prompt}\n")
+            # else:
+            #     logger.debug(f"\nreplyer_Prompt:{prompt}\n")
 
             content, (reasoning_content, model_name, tool_calls) = await self.express_model.generate_response_async(
                 prompt

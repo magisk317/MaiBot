@@ -15,12 +15,15 @@ from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_messages_with_id,
     get_raw_msg_before_timestamp_with_chat,
+    replace_user_references,
 )
 from src.chat.utils.utils import get_chat_type_and_target_info
 from src.chat.planner_actions.action_manager import ActionManager
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.plugin_system.base.component_types import ActionInfo, ComponentType, ActionActivationType
 from src.plugin_system.core.component_registry import component_registry
+from src.plugin_system.apis.message_api import translate_pid_to_description
+from src.person_info.person_info import Person
 
 if TYPE_CHECKING:
     from src.common.data_models.info_data_model import TargetPersonInfo
@@ -68,7 +71,8 @@ no_reply
 {moderation_prompt}
 
 target_message_id为必填，表示触发消息的id
-请选择所有符合使用要求的action，动作用json格式输出，用```json包裹，如果输出多个json，每个json都要单独一行放在同一个```json代码块内:
+请选择所有符合使用要求的action，每个动作最多选择一次，但是可以选择多个动作；
+动作用json格式输出，用```json包裹，如果输出多个json，每个json都要单独一行放在同一个```json代码块内:
 **示例**
 // 理由文本（简短）
 ```json
@@ -155,10 +159,40 @@ class ActionPlanner:
                 logger.warning(f"{self.log_prefix}planner理由引用 {msg_id} 未找到对应消息，保持原样")
                 return msg_id
 
-            msg_text = (message.processed_plain_text or message.display_message or "").strip()
+            msg_text = (message.processed_plain_text or "").strip()
             if not msg_text:
                 logger.warning(f"{self.log_prefix}planner理由引用 {msg_id} 的消息内容为空，保持原样")
                 return msg_id
+
+            # 替换 [picid:xxx] 为 [图片：描述]
+            pic_pattern = r"\[picid:([^\]]+)\]"
+            def replace_pic_id(pic_match: re.Match) -> str:
+                pic_id = pic_match.group(1)
+                description = translate_pid_to_description(pic_id)
+                return f"[图片：{description}]"
+            msg_text = re.sub(pic_pattern, replace_pic_id, msg_text)
+
+            # 替换用户引用格式：回复<aaa:bbb> 和 @<aaa:bbb>
+            platform = getattr(message, "user_info", None) and message.user_info.platform or getattr(message, "chat_info", None) and message.chat_info.platform or "qq"
+            msg_text = replace_user_references(msg_text, platform, replace_bot_name=True)
+
+            # 替换单独的 <用户名:用户ID> 格式（replace_user_references 已处理回复<和@<格式）
+            # 匹配所有 <aaa:bbb> 格式，由于 replace_user_references 已经替换了回复<和@<格式，
+            # 这里匹配到的应该都是单独的格式
+            user_ref_pattern = r"<([^:<>]+):([^:<>]+)>"
+            def replace_user_ref(user_match: re.Match) -> str:
+                user_name = user_match.group(1)
+                user_id = user_match.group(2)
+                try:
+                    # 检查是否是机器人自己
+                    if user_id == global_config.bot.qq_account:
+                        return f"{global_config.bot.nickname}(你)"
+                    person = Person(platform=platform, user_id=user_id)
+                    return person.person_name or user_name
+                except Exception:
+                    # 如果解析失败，使用原始昵称
+                    return user_name
+            msg_text = re.sub(user_ref_pattern, replace_user_ref, msg_text)
 
             preview = msg_text if len(msg_text) <= 100 else f"{msg_text[:97]}..."
             logger.info(f"{self.log_prefix}planner理由引用 {msg_id} -> 消息（{preview}）")
