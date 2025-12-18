@@ -648,29 +648,29 @@ class ExperimentalConfig(ConfigBase):
 class MaimMessageConfig(ConfigBase):
     """maim_message配置类"""
 
-    use_custom: bool = False
-    """是否使用自定义的maim_message配置"""
-
-    host: str = "127.0.0.1"
-    """主机地址"""
-
-    port: int = 8090
-    """"端口号"""
-
-    mode: Literal["ws", "tcp"] = "ws"
-    """连接模式，支持ws和tcp"""
-
-    use_wss: bool = False
-    """是否使用WSS安全连接"""
-
-    cert_file: str = ""
-    """SSL证书文件路径，仅在use_wss=True时有效"""
-
-    key_file: str = ""
-    """SSL密钥文件路径，仅在use_wss=True时有效"""
-
     auth_token: list[str] = field(default_factory=lambda: [])
-    """认证令牌，用于API验证，为空则不启用验证"""
+    """认证令牌，用于旧版API验证，为空则不启用验证"""
+
+    enable_api_server: bool = False
+    """是否启用额外的新版API Server"""
+
+    api_server_host: str = "0.0.0.0"
+    """新版API Server主机地址"""
+
+    api_server_port: int = 8090
+    """新版API Server端口号"""
+
+    api_server_use_wss: bool = False
+    """新版API Server是否启用WSS"""
+
+    api_server_cert_file: str = ""
+    """新版API Server SSL证书文件路径"""
+
+    api_server_key_file: str = ""
+    """新版API Server SSL密钥文件路径"""
+
+    api_server_allowed_api_keys: list[str] = field(default_factory=lambda: [])
+    """新版API Server允许的API Key列表，为空则允许所有连接"""
 
 
 @dataclass
