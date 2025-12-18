@@ -186,6 +186,7 @@ async def _send_message(message: MessageSending, show_log=True) -> bool:
         async def send_with_new_api(legacy_exception=None):
             try:
                 from src.config.config import global_config
+
                 # 如果未开启 API Server，直接跳过 Fallback
                 if not global_config.maim_message.enable_api_server:
                     if legacy_exception:
@@ -194,36 +195,38 @@ async def _send_message(message: MessageSending, show_log=True) -> bool:
 
                 global_api = get_global_api()
                 extra_server = getattr(global_api, "extra_server", None)
-                
+
                 if extra_server and extra_server.is_running():
                     # Fallback: 使用极其简单的 Platform -> API Key 映射
                     # 只有收到过该平台的消息，我们才知道该平台的 API Key，才能回传消息
                     platform_map = getattr(global_api, "platform_map", {})
                     target_api_key = platform_map.get(platform)
-                    
+
                     if target_api_key:
                         # 构造 APIMessageBase
                         from maim_message.message import APIMessageBase, MessageDim
-                        
+
                         msg_dim = MessageDim(api_key=target_api_key, platform=platform)
-                        
+
                         api_message = APIMessageBase(
                             message_info=message.message_info,
                             message_segment=message.message_segment,
-                            message_dim=msg_dim
+                            message_dim=msg_dim,
                         )
-                        
+
                         # 直接调用 Server 的 send_message 接口，它会自动处理路由
                         results = await extra_server.send_message(api_message)
-                        
+
                         # 检查是否有任何连接发送成功
                         if any(results.values()):
                             if show_log:
-                                logger.info(f"已通过API Server Fallback将消息 '{message_preview}' 发往平台'{platform}' (key: {target_api_key})")
+                                logger.info(
+                                    f"已通过API Server Fallback将消息 '{message_preview}' 发往平台'{platform}' (key: {target_api_key})"
+                                )
                             return True
             except Exception:
                 pass
-            
+
             # 如果 Fallback 失败，且存在 legacy 异常，则抛出 legacy 异常
             if legacy_exception:
                 raise legacy_exception
@@ -231,14 +234,14 @@ async def _send_message(message: MessageSending, show_log=True) -> bool:
 
         try:
             send_result = await get_global_api().send_message(message)
-            if send_result:
-                if show_log:
-                    logger.info(f"已将消息  '{message_preview}'  发往平台'{message.message_info.platform}'")
-                return True
-            
+            # if send_result:
+            if show_log:
+                logger.info(f"已将消息  '{message_preview}'  发往平台'{message.message_info.platform}'")
+            return True
+
             # Legacy API 返回 False (发送失败但未报错)，尝试 Fallback
-            return await send_with_new_api()
-            
+            # return await send_with_new_api()
+
         except Exception as legacy_e:
             # Legacy API 抛出异常，尝试 Fallback
             # 如果 Fallback 也失败，将重新抛出 legacy_e
