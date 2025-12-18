@@ -261,7 +261,7 @@ enable = true
 [webui] # WebUI 独立服务器配置
 enabled = true # 是否启用WebUI
 mode = "production" # 模式: development(开发) 或 production(生产)
-host = "0.0.0.0" # WebUI 服务器监听地址
+host = "127.0.0.1" # WebUI 服务器监听地址
 port = 8001 # WebUI 服务器端口
 
 # 防爬虫配置
