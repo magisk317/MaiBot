@@ -275,3 +275,4 @@ chat_prompts = []
 [relationship]
 enable_relationship = true # 是否启用关系系统
 
+[dream] # 导入dream字段，无需填写

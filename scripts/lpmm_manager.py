@@ -1,6 +1,8 @@
 import argparse
 import os
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
 
@@ -20,7 +22,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from src.common.logger import get_logger  # type: ignore
-from src.config.config import global_config  # type: ignore
+from src.config.config import global_config, model_config  # type: ignore
 
 # 引入各功能脚本的入口函数
 from import_openie import main as import_openie_main  # type: ignore
@@ -45,6 +47,7 @@ ACTION_INFO = {
     "global_inspect": "查看当前整库向量与 KG 状态（调用 inspect_lpmm_global.py）",
     "refresh": "刷新 LPMM 磁盘数据到内存（调用 refresh_lpmm_knowledge.py）",
     "test": "运行 LPMM 检索效果回归测试（调用 test_lpmm_retrieval.py）",
+    "embedding_helper": "嵌入模型迁移辅助：查看当前嵌入模型/维度并归档 embedding_model_test.json",
     "full_import": "一键执行：信息抽取 -> 导入 OpenIE -> 刷新",
 }
 
@@ -154,6 +157,9 @@ def run_action(action: str, extra_args: Optional[List[str]] = None) -> None:
         elif action == "test":
             _warn_if_lpmm_disabled()
             _with_overridden_argv(extra_args, test_lpmm_retrieval_main)
+        elif action == "embedding_helper":
+            # 嵌入模型迁移辅助：查看当前嵌入模型/维度并归档 embedding_model_test.json
+            _run_embedding_helper()
         elif action == "full_import":
             # 一键流水线：预处理原始语料 -> 信息抽取 -> 导入 -> 刷新
             logger.info("开始 full_import：预处理原始语料 -> 信息抽取 -> 导入 -> 刷新")
@@ -198,6 +204,7 @@ def print_menu() -> None:
             "global_inspect",
             "refresh",
             "test",
+            "embedding_helper",
             "full_import",
         ],
         start=1,
@@ -219,12 +226,13 @@ def interactive_loop() -> None:
         "global_inspect",
         "refresh",
         "test",
+        "embedding_helper",
         "full_import",
     ]
 
     while True:
         print_menu()
-        choice = input("请输入选项编号（0-8）：").strip()
+        choice = input("请输入选项编号（0-10）：").strip()
 
         if choice in ("0", "q", "Q", "quit", "exit"):
             print("已退出 LPMM 管理器。")
@@ -233,7 +241,7 @@ def interactive_loop() -> None:
         try:
             idx = int(choice)
         except ValueError:
-            print("输入无效，请输入 0-7 之间的数字。")
+            print("输入无效，请输入 0-10 之间的数字。")
             continue
 
         if not (1 <= idx <= len(key_order)):
@@ -394,6 +402,83 @@ def _interactive_build_test_args() -> List[str]:
             if kw:
                 args.extend(["--expect-keyword", kw])
     return args
+
+
+def _run_embedding_helper() -> None:
+    """嵌入模型迁移辅助：展示当前配置，并安全归档 embedding_model_test.json。"""
+    from src.chat.knowledge.embedding_store import EMBEDDING_TEST_FILE  # type: ignore
+
+    # 1. 读取当前配置中的嵌入维度与模型信息
+    current_dim = getattr(getattr(global_config, "lpmm_knowledge", None), "embedding_dimension", None)
+    embed_task = getattr(model_config.model_task_config, "embedding", None)
+    model_ids: List[str] = []
+    if embed_task is not None:
+        model_ids = getattr(embed_task, "model_list", []) or []
+    primary_model = model_ids[0] if model_ids else "unknown"
+    safe_model_name = re.sub(r"[^0-9A-Za-z_.-]+", "_", primary_model) or "unknown"
+
+    print("\n===== 嵌入模型迁移辅助 (embedding_helper) =====")
+    print(f"- 当前嵌入模型标识（model_task_config.embedding.model_list[0]）: {primary_model}")
+    print(f"- 当前配置中的嵌入维度 (lpmm_knowledge.embedding_dimension): {current_dim}")
+    print(f"- 测试文件路径: {EMBEDDING_TEST_FILE}")
+
+    new_dim = input(
+        "\n如果你计划更换嵌入模型，请在此输入“新的嵌入维度”（仅用于记录与提示，回车则跳过）："
+    ).strip()
+    if new_dim and not new_dim.isdigit():
+        print("输入的维度不是纯数字，已取消操作。")
+        return
+
+    print(
+        "\n[重要提示]\n"
+        "- 修改嵌入模型或维度会导致当前磁盘中的旧知识库（data/embedding 下的向量）与新模型不兼容；\n"
+        "- 这通常意味着你需要清空旧的向量/图数据，并重新执行 LPMM 导入流水线；\n"
+        "- 请仅在你**确定要切换嵌入模型/维度**时再继续。\n"
+    )
+    confirm = input("是否已充分评估风险，并准备切换嵌入模型/维度？(y/N): ").strip().lower()
+    if confirm != "y":
+        print("已根据你的选择取消嵌入模型迁移辅助操作。")
+        return
+
+    print(
+        "\n接下来请手动完成以下操作（脚本不会自动修改配置或删除知识库）：\n"
+        f"1. 在配置文件中，将 lpmm_knowledge.embedding_dimension 从 {current_dim} 修改为你计划使用的新维度"
+        + (f"（例如 {new_dim}）" if new_dim else "")  # 仅作为示例
+        + "；\n"
+        "2. 根据需要，清空 data/embedding 与相关 KG 数据（data/rag 等），然后重新执行导入流水线；\n"
+        "3. 本脚本将帮助你归档当前的 embedding_model_test.json，避免旧测试文件干扰新模型的校验。\n"
+    )
+
+    # 2. 归档 embedding_model_test.json
+    test_path = Path(EMBEDDING_TEST_FILE)
+    if not test_path.exists():
+        print(f"\n[INFO] 未在 {test_path} 发现 embedding_model_test.json，无需归档。")
+        return
+
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    archive_name = f"embedding_model_test-{safe_model_name}-{ts}.json"
+    archive_path = test_path.with_name(archive_name)
+
+    # 若不巧重名，简单追加后缀避免覆盖
+    suffix_id = 1
+    while archive_path.exists():
+        archive_name = f"embedding_model_test-{safe_model_name}-{ts}-{suffix_id}.json"
+        archive_path = test_path.with_name(archive_name)
+        suffix_id += 1
+
+    try:
+        test_path.rename(archive_path)
+    except Exception as exc:  # pragma: no cover - 防御性兜底
+        logger.error("归档 embedding_model_test.json 失败: %s", exc)
+        print(f"[ERROR] 归档 embedding_model_test.json 失败，请检查文件权限与路径。错误详情已写入日志。")
+        return
+
+    print(
+        f"\n[OK] 已将 {test_path.name} 重命名为 {archive_path.name}。\n"
+        f"- 归档位置: {archive_path}\n"
+        "- 之后再次运行涉及嵌入模型的一致性校验时，将会基于当前配置与新模型生成新的测试文件。\n"
+        "- 在完成配置修改与知识库重导入前，请不要手动再创建名为 embedding_model_test.json 的文件。"
+    )
 
 
 def parse_args(argv: Optional[list[str]] = None) -> tuple[argparse.Namespace, List[str]]:
