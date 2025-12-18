@@ -1360,15 +1360,37 @@ async def get_installed_plugins(
                 )
 
             except json.JSONDecodeError as e:
-                logger.warning(f"插件 {plugin_id} 的 _manifest.json 解析失败: {e}")
+                logger.warning(f"插件 {folder_name} 的 _manifest.json 解析失败: {e}")
                 continue
             except Exception as e:
-                logger.error(f"读取插件 {plugin_id} 信息时出错: {e}")
+                logger.error(f"读取插件 {folder_name} 信息时出错: {e}")
                 continue
 
-        logger.info(f"找到 {len(installed_plugins)} 个已安装插件")
+        # 去重：如果有重复的 plugin_id，只保留第一个（按路径）
+        seen_ids = {}  # 记录 ID -> 路径的映射
+        unique_plugins = []
+        duplicates = []
+        
+        for plugin in installed_plugins:
+            plugin_id = plugin["id"]
+            plugin_path = plugin["path"]
+            
+            if plugin_id not in seen_ids:
+                seen_ids[plugin_id] = plugin_path
+                unique_plugins.append(plugin)
+            else:
+                duplicates.append(plugin)
+                first_path = seen_ids[plugin_id]
+                logger.warning(
+                    f"重复插件 {plugin_id}: 保留 {first_path}, 跳过 {plugin_path}"
+                )
+        
+        if duplicates:
+            logger.warning(f"共检测到 {len(duplicates)} 个重复插件已去重")
 
-        return {"success": True, "plugins": installed_plugins, "total": len(installed_plugins)}
+        logger.info(f"找到 {len(unique_plugins)} 个已安装插件")
+
+        return {"success": True, "plugins": unique_plugins, "total": len(unique_plugins)}
 
     except Exception as e:
         logger.error(f"获取已安装插件列表失败: {e}", exc_info=True)
@@ -1558,6 +1580,140 @@ async def get_plugin_config_schema(
         raise
     except Exception as e:
         logger.error(f"获取插件配置 Schema 失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
+
+
+@router.get("/config/{plugin_id}/raw")
+async def get_plugin_config_raw(
+    plugin_id: str,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """
+    获取插件原始 TOML 配置文件内容
+    """
+    # Token 验证
+    token = get_token_from_cookie_or_header(maibot_session, authorization)
+    token_manager = get_token_manager()
+    if not token or not token_manager.verify_token(token):
+        raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
+
+    logger.info(f"获取插件原始配置: {plugin_id}")
+
+    try:
+        # 查找插件目录
+        plugins_dir = Path("plugins")
+        plugin_path = None
+
+        for p in plugins_dir.iterdir():
+            if p.is_dir():
+                manifest_path = p / "_manifest.json"
+                if manifest_path.exists():
+                    try:
+                        with open(manifest_path, "r", encoding="utf-8") as f:
+                            manifest = json.load(f)
+                        if manifest.get("id") == plugin_id or p.name == plugin_id:
+                            plugin_path = p
+                            break
+                    except Exception:
+                        continue
+
+        if not plugin_path:
+            raise HTTPException(status_code=404, detail=f"未找到插件: {plugin_id}")
+
+        # 读取配置文件
+        config_path = plugin_path / "config.toml"
+        if not config_path.exists():
+            return {"success": True, "config": "", "message": "配置文件不存在"}
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_content = f.read()
+
+        return {"success": True, "config": config_content}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取插件原始配置失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
+
+
+@router.put("/config/{plugin_id}/raw")
+async def update_plugin_config_raw(
+    plugin_id: str,
+    request: UpdatePluginConfigRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """
+    更新插件原始 TOML 配置文件
+
+    直接保存 TOML 字符串到配置文件。
+    """
+    # Token 验证
+    token = get_token_from_cookie_or_header(maibot_session, authorization)
+    token_manager = get_token_manager()
+    if not token or not token_manager.verify_token(token):
+        raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
+
+    logger.info(f"更新插件原始配置: {plugin_id}")
+
+    try:
+        # 查找插件目录
+        plugins_dir = Path("plugins")
+        plugin_path = None
+
+        for p in plugins_dir.iterdir():
+            if p.is_dir():
+                manifest_path = p / "_manifest.json"
+                if manifest_path.exists():
+                    try:
+                        with open(manifest_path, "r", encoding="utf-8") as f:
+                            manifest = json.load(f)
+                        if manifest.get("id") == plugin_id or p.name == plugin_id:
+                            plugin_path = p
+                            break
+                    except Exception:
+                        continue
+
+        if not plugin_path:
+            raise HTTPException(status_code=404, detail=f"未找到插件: {plugin_id}")
+
+        config_path = plugin_path / "config.toml"
+
+        # 验证 TOML 格式
+        import tomlkit
+        
+        if not isinstance(request.config, str):
+            raise HTTPException(status_code=400, detail="配置必须是字符串格式的 TOML 内容")
+        
+        try:
+            tomlkit.loads(request.config)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"TOML 格式错误: {str(e)}")
+
+        # 备份旧配置
+        import shutil
+        import datetime
+
+        if config_path.exists():
+            backup_name = f"config.toml.backup.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+            backup_path = plugin_path / backup_name
+            shutil.copy(config_path, backup_path)
+            logger.info(f"已备份配置文件: {backup_path}")
+
+        # 写入新配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(request.config)
+
+        logger.info(f"已更新插件原始配置: {plugin_id}")
+
+        return {"success": True, "message": "配置已保存", "note": "配置更改将在插件重新加载后生效"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新插件原始配置失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
 
 
