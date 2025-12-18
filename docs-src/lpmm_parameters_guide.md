@@ -76,7 +76,6 @@ embedding_chunk_size  = 16    # 每批嵌入的条数
 info_extraction_workers = 3   # 实体抽取同时执行线程数
 enable_ppr            = true  # 是否启用PPR，低配机器可关闭
 ppr_node_cap          = 8000  # 图节点数超过该值时自动跳过PPR
-ppr_relation_cap      = 50    # 命中关系数超过该值时自动跳过PPR
 ```
 
 - `embedding_dimension`  
@@ -97,13 +96,13 @@ ppr_relation_cap      = 50    # 命中关系数超过该值时自动跳过PPR
   - 使用 Pro/贵价模型时建议不要太大，避免并行费用过高；
   - 一般 2–4 就能取得较好平衡。
 
-- `enable_ppr`  
+- `enable_ppr`
   是否启用个性化 PageRank（PPR）图检索：  
   - `true`：检索会结合向量+知识图，效果更好，但略慢；  
   - `false`：只用向量检索，牺牲一定效果，性能更稳定。
 
-- `ppr_node_cap` / `ppr_relation_cap`  
-  安全阈值：当图节点数或命中关系数超过阈值时自动跳过 PPR，以避免“大图”导致卡顿。
+- `ppr_node_cap`
+  安全阈值：当图节点数超过阈值时自动跳过 PPR，以避免“大图”导致卡顿。
 
 > 调参建议：  
 > - 若导入/检索阶段机器明显“顶不住”（>=1MB的大文本，且分配配置<4C），优先调低：  

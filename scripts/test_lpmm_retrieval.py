@@ -1,7 +1,8 @@
+import argparse
 import asyncio
 import os
 import sys
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # 强制使用 utf-8，避免控制台编码报错影响 Embedding 加载
 try:
@@ -23,7 +24,7 @@ from src.memory_system.retrieval_tools.query_lpmm_knowledge import query_lpmm_kn
 logger = get_logger("test_lpmm_retrieval")
 
 
-TEST_CASES: List[Dict[str, Any]] = [
+DEFAULT_TEST_CASES: List[Dict[str, Any]] = [
     {
         "name": "回滚一批知识",
         "query": "LPMM是什么?",
@@ -37,7 +38,7 @@ TEST_CASES: List[Dict[str, Any]] = [
 ]
 
 
-async def run_tests() -> None:
+async def run_tests(test_cases: Optional[List[Dict[str, Any]]] = None) -> None:
     """简单测试 LPMM 知识库检索能力"""
     if not global_config.lpmm_knowledge.enable:
         logger.warning("当前配置中 lpmm_knowledge.enable 为 False，检索测试可能直接返回“未启用”。")
@@ -46,7 +47,9 @@ async def run_tests() -> None:
     lpmm_start_up()
     logger.info("LPMM 知识库初始化完成，开始执行测试用例。")
 
-    for case in TEST_CASES:
+    cases = test_cases if test_cases is not None else DEFAULT_TEST_CASES
+
+    for case in cases:
         name = case["name"]
         query = case["query"]
         expect_keywords: List[str] = case.get("expect_keywords", [])
@@ -86,7 +89,33 @@ async def run_tests() -> None:
 
 
 def main() -> None:
-    asyncio.run(run_tests())
+    parser = argparse.ArgumentParser(
+        description=(
+            "测试 LPMM 知识库检索能力。\n"
+            "如不提供参数，则执行内置的默认用例；\n"
+            "也可以通过 --query 与 --expect-keyword 自定义一条测试用例。"
+        )
+    )
+    parser.add_argument(
+        "--query",
+        help="自定义测试问题（单条）。提供该参数时，将仅运行这一条用例。",
+    )
+    parser.add_argument(
+        "--expect-keyword",
+        action="append",
+        help="期望在检索结果中出现的关键字，可重复多次指定；仅在提供 --query 时生效。",
+    )
+    args = parser.parse_args()
+
+    if args.query:
+        custom_case = {
+            "name": "custom",
+            "query": args.query,
+            "expect_keywords": args.expect_keyword or [],
+        }
+        asyncio.run(run_tests([custom_case]))
+    else:
+        asyncio.run(run_tests())
 
 
 if __name__ == "__main__":

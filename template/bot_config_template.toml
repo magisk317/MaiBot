@@ -191,7 +191,6 @@ embedding_chunk_size = 4 # 每批嵌入的条数
 max_synonym_entities = 2000 # 同义边参与的实体数上限，超限则跳过
 enable_ppr = true # 是否启用PPR，低配机器可关闭
 ppr_node_cap = 8000 # 图节点数超过该值时跳过PPR
-ppr_relation_cap = 50 # 命中关系数超过该值时跳过PPR
 webui_graph_default_limit = 200 # WebUI /graph 默认返回的最大节点数，避免大图负载
 
 [keyword_reaction]

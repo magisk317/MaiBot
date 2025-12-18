@@ -89,6 +89,15 @@ def main():
         default=2000,
         help="单次最大允许删除的节点数量（段落+实体），超过则需要显式确认或调整该参数",
     )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help=(
+            "非交互模式：不再通过 input() 询问任何信息；"
+            "在该模式下，如果需要交互（例如 --search-text 未指定具体条目、未提供 --yes），"
+            "会直接报错退出。"
+        ),
+    )
     args = parser.parse_args()
 
     # 至少需要一种来源
@@ -211,6 +220,12 @@ def main():
             logger.info("找到以下候选段落（输入序号选择要删除的条目，可用逗号分隔，多选）：")
             for i, (key, text) in enumerate(candidates, start=1):
                 logger.info(f"{i}. {key} | {text[:80]}")
+            if args.non_interactive:
+                logger.error(
+                    "当前处于非交互模式，无法通过输入序号选择要删除的候选段落；"
+                    "如需脚本化删除，请改用 --hash-file / --openie-file / --raw-file 等方式。"
+                )
+                sys.exit(1)
             choice = input("请输入要删除的序号列表（如 1,3），或直接回车取消：").strip()
             if choice:
                 try:
@@ -270,6 +285,12 @@ def main():
 
     # 交互确认
     if not args.yes:
+        if args.non_interactive:
+            logger.error(
+                "当前处于非交互模式且未指定 --yes，出于安全考虑，删除操作已被拒绝。\n"
+                "如确认需要在非交互模式下执行删除，请显式添加 --yes 参数。"
+            )
+            sys.exit(1)
         confirm = input("确认删除上述数据？输入大写 YES 以继续，其他任意键取消: ").strip()
         if confirm != "YES":
             logger.info("用户取消删除操作")
