@@ -124,10 +124,8 @@ SCANNER_SPECIFIC_HEADERS = {
 # strict: 严格模式（更严格的检测，更低的频率限制）
 # loose: 宽松模式（较宽松的检测，较高的频率限制）
 # basic: 基础模式（只记录恶意访问，不阻止，不限制请求数，不跟踪IP）
-ANTI_CRAWLER_MODE = os.getenv("WEBUI_ANTI_CRAWLER_MODE", "basic").lower()
 
-
-# IP白名单配置（从环境变量读取，逗号分隔）
+# IP白名单配置（从配置文件读取，逗号分隔）
 # 支持格式：
 # - 精确IP：127.0.0.1, 192.168.1.100
 # - CIDR格式：192.168.1.0/24, 172.17.0.0/16 (适用于Docker网络)
@@ -236,13 +234,23 @@ def _convert_wildcard_to_regex(wildcard_pattern: str) -> Optional[str]:
     return regex
 
 
-ALLOWED_IPS = _parse_allowed_ips(os.getenv("WEBUI_ALLOWED_IPS", ""))
+# 从配置读取防爬虫设置（延迟导入避免循环依赖）
+def _get_anti_crawler_config():
+    """获取防爬虫配置"""
+    from src.config.config import global_config
+    return {
+        'mode': global_config.webui.anti_crawler_mode,
+        'allowed_ips': _parse_allowed_ips(global_config.webui.allowed_ips),
+        'trusted_proxies': _parse_allowed_ips(global_config.webui.trusted_proxies),
+        'trust_xff': global_config.webui.trust_xff
+    }
 
-# 信任的代理IP配置（从环境变量读取，逗号分隔）
-# 只有在信任的代理IP下才使用X-Forwarded-For头
-# 默认关闭（空），不信任任何代理
-TRUSTED_PROXIES = _parse_allowed_ips(os.getenv("WEBUI_TRUSTED_PROXIES", ""))
-TRUST_XFF = os.getenv("WEBUI_TRUST_XFF", "false").lower() == "true"
+# 初始化配置（将在模块加载时执行）
+_config = _get_anti_crawler_config()
+ANTI_CRAWLER_MODE = _config['mode']
+ALLOWED_IPS = _config['allowed_ips']
+TRUSTED_PROXIES = _config['trusted_proxies']
+TRUST_XFF = _config['trust_xff']
 
 
 def _get_mode_config(mode: str) -> dict:

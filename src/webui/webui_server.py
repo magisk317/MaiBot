@@ -1,6 +1,5 @@
 """独立的 WebUI 服务器 - 运行在 0.0.0.0:8001"""
 
-import os
 import asyncio
 import mimetypes
 from pathlib import Path
@@ -130,9 +129,10 @@ class WebUIServer:
         """配置防爬虫中间件"""
         try:
             from src.webui.anti_crawler import AntiCrawlerMiddleware
+            from src.config.config import global_config
 
-            # 从环境变量读取防爬虫模式（false/strict/loose/basic）
-            anti_crawler_mode = os.getenv("WEBUI_ANTI_CRAWLER_MODE", "basic").lower()
+            # 从配置读取防爬虫模式
+            anti_crawler_mode = global_config.webui.anti_crawler_mode
 
             # 注意：中间件按注册顺序反向执行，所以先注册的中间件后执行
             # 我们需要在CORS之前注册，这样防爬虫检查会在CORS之前执行
@@ -186,7 +186,7 @@ class WebUIServer:
             error_msg = f"❌ WebUI 服务器启动失败: 端口 {self.port} 已被占用"
             logger.error(error_msg)
             logger.error(f"💡 请检查是否有其他程序正在使用端口 {self.port}")
-            logger.error("💡 可以通过环境变量 WEBUI_PORT 修改 WebUI 端口")
+            logger.error("💡 可以在配置文件中修改 webui.port 来更改 WebUI 端口")
             logger.error(f"💡 Windows 用户可以运行: netstat -ano | findstr :{self.port}")
             logger.error(f"💡 Linux/Mac 用户可以运行: lsof -i :{self.port}")
             raise OSError(f"端口 {self.port} 已被占用，无法启动 WebUI 服务器")
@@ -212,7 +212,7 @@ class WebUIServer:
             if "address already in use" in str(e).lower() or e.errno in (98, 10048):  # 98: Linux, 10048: Windows
                 logger.error(f"❌ WebUI 服务器启动失败: 端口 {self.port} 已被占用")
                 logger.error(f"💡 请检查是否有其他程序正在使用端口 {self.port}")
-                logger.error("💡 可以通过环境变量 WEBUI_PORT 修改 WebUI 端口")
+                logger.error("💡 可以在配置文件中修改 webui.port 来更改 WebUI 端口")
             else:
                 logger.error(f"❌ WebUI 服务器启动失败 (网络错误): {e}")
             raise
@@ -257,8 +257,9 @@ def get_webui_server() -> WebUIServer:
     """获取全局 WebUI 服务器实例"""
     global _webui_server
     if _webui_server is None:
-        # 从环境变量读取配置
-        host = os.getenv("WEBUI_HOST", "0.0.0.0")
-        port = int(os.getenv("WEBUI_PORT", "8001"))
+        # 从配置读取
+        from src.config.config import global_config
+        host = global_config.webui.host
+        port = global_config.webui.port
         _webui_server = WebUIServer(host=host, port=port)
     return _webui_server

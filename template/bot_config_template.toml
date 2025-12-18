@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.2"
+version = "7.2.3"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 # 如果你想要修改配置文件，请递增version的值
@@ -191,8 +191,6 @@ max_embedding_workers = 3 # 嵌入/抽取并发线程数
 embedding_chunk_size = 4 # 每批嵌入的条数
 max_synonym_entities = 2000 # 同义边参与的实体数上限，超限则跳过
 enable_ppr = true # 是否启用PPR，低配机器可关闭
-ppr_node_cap = 8000 # 图节点数超过该值时跳过PPR
-webui_graph_default_limit = 200 # WebUI /graph 默认返回的最大节点数，避免大图负载
 
 [keyword_reaction]
 keyword_rules = [
@@ -259,6 +257,22 @@ api_server_allowed_api_keys = [] # 新版API Server允许的API Key列表，为�
 
 [telemetry] #发送统计信息，主要是看全球有多少只麦麦
 enable = true
+
+[webui] # WebUI 独立服务器配置
+enabled = true # 是否启用WebUI
+mode = "production" # 模式: development(开发) 或 production(生产)
+host = "0.0.0.0" # WebUI 服务器监听地址
+port = 8001 # WebUI 服务器端口
+
+# 防爬虫配置
+anti_crawler_mode = "basic" # 防爬虫模式: false(禁用) / strict(严格) / loose(宽松) / basic(基础-只记录不阻止)
+allowed_ips = "127.0.0.1" # IP白名单（逗号分隔，支持精确IP、CIDR格式和通配符）
+                          # 示例: 127.0.0.1,192.168.1.0/24,172.17.0.0/16
+trusted_proxies = "" # 信任的代理IP列表（逗号分隔），只有来自这些IP的X-Forwarded-For才被信任
+                     # 示例: 127.0.0.1,192.168.1.1,172.17.0.1
+trust_xff = false # 是否启用X-Forwarded-For代理解析（默认false）
+                  # 启用后，仍要求直连IP在trusted_proxies中才会信任XFF头
+secure_cookie = false # 是否启用安全Cookie（仅通过HTTPS传输，默认false）
 
 [experimental] #实验性功能
 # 为指定聊天添加额外的prompt配置
