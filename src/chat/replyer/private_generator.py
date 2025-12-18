@@ -75,6 +75,7 @@ class PrivateReplyer:
         stream_id: Optional[str] = None,
         reply_message: Optional[DatabaseMessages] = None,
         reply_time_point: Optional[float] = time.time(),
+        unknown_words: Optional[List[str]] = None,
     ) -> Tuple[bool, LLMGenerationDataModel]:
         # sourcery skip: merge-nested-ifs
         """
