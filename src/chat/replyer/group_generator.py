@@ -488,6 +488,10 @@ class DefaultReplyer:
         duration = end_time - start_time
         return name, result, duration
 
+    async def _build_disabled_jargon_explanation(self) -> str:
+        """当关闭黑话解释时使用的占位协程，避免额外的LLM调用"""
+        return ""
+
     def build_chat_history_prompts(
         self, message_list_before_now: List[DatabaseMessages], target_user_id: str, sender: str
     ) -> Tuple[str, str]:
@@ -819,7 +823,14 @@ class DefaultReplyer:
             show_actions=True,
         )
 
-        # 并行执行八个构建任务（包括黑话解释）
+        # 根据配置决定是否启用黑话解释
+        enable_jargon_explanation = getattr(global_config.expression, "enable_jargon_explanation", True)
+        if enable_jargon_explanation:
+            jargon_coroutine = explain_jargon_in_context(chat_id, message_list_before_short, chat_talking_prompt_short)
+        else:
+            jargon_coroutine = self._build_disabled_jargon_explanation()
+
+        # 并行执行八个构建任务（包括黑话解释，可配置关闭）
         task_results = await asyncio.gather(
             self._time_and_run_task(
                 self.build_expression_habits(chat_talking_prompt_short, target, reply_reason, think_level=think_level),
@@ -837,10 +848,7 @@ class DefaultReplyer:
                 ),
                 "memory_retrieval",
             ),
-            self._time_and_run_task(
-                explain_jargon_in_context(chat_id, message_list_before_short, chat_talking_prompt_short),
-                "jargon_explanation",
-            ),
+            self._time_and_run_task(jargon_coroutine, "jargon_explanation"),
         )
 
         # 任务名称中英文映射

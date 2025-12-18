@@ -188,6 +188,13 @@ class ExpressionLearner:
             if not context:
                 continue
 
+            # 过滤掉包含 SELF 的内容（不学习）
+            if "SELF" in (situation or "") or "SELF" in (style or "") or "SELF" in context:
+                logger.info(
+                    f"跳过包含 SELF 的表达方式: situation={situation}, style={style}, source_id={source_id}"
+                )
+                continue
+
             filtered_expressions.append((situation, style, context))
 
         learnt_expressions = filtered_expressions
@@ -687,6 +694,11 @@ class ExpressionLearner:
         for content, source_id in jargon_entries:
             content = content.strip()
             if not content:
+                continue
+
+            # 过滤掉包含 SELF 的黑话，不学习
+            if "SELF" in content:
+                logger.info(f"跳过包含 SELF 的黑话: {content}")
                 continue
 
             # 检查是否包含机器人名称
