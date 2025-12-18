@@ -274,5 +274,3 @@ chat_prompts = []
 # 此系统暂时移除，无效配置
 [relationship]
 enable_relationship = true # 是否启用关系系统
-
-[dream] # 导入dream字段，无需填写
