@@ -182,31 +182,26 @@ async def _send_message(message: MessageSending, show_log=True) -> bool:
                     logger.info(f"已将消息  '{message_preview}'  发往 WebUI 聊天室")
             return True
 
-        # 尝试通过Legacy API发送消息，如果失败尝试API Server Fallback
-        try:
-            send_result = await get_global_api().send_message(message)
-            if not send_result:
-                raise Exception("Legacy API send_message returned False (Target platform not found or connection lost)")
-            
-            if show_log:
-                logger.info(f"已将消息  '{message_preview}'  发往平台'{message.message_info.platform}'")
-            return True
-        except Exception as legacy_error:
-            # Fallback: 尝试使用额外的 API Server 发送
-            global_api = get_global_api()
-            extra_server = getattr(global_api, "extra_server", None)
-            
-            if extra_server and extra_server.is_running():
-                platform = message.message_info.platform
+        # Fallback 逻辑: 尝试通过 API Server 发送
+        async def send_with_new_api(legacy_exception=None):
+            try:
+                from src.config.config import global_config
+                # 如果未开启 API Server，直接跳过 Fallback
+                if not global_config.maim_message.enable_api_server:
+                    if legacy_exception:
+                        raise legacy_exception
+                    return False
+
+                global_api = get_global_api()
+                extra_server = getattr(global_api, "extra_server", None)
                 
-                # Fallback: 使用极其简单的 Platform -> API Key 映射
-                # 只有收到过该平台的消息，我们才知道该平台的 API Key，才能回传消息
-                platform_map = getattr(global_api, "platform_map", {})
-                target_api_key = platform_map.get(platform)
-                
-                if target_api_key:
-                    logger.warning(f"Legacy API发送失败: {legacy_error}。使用缓存API Key通过API Server发送...")
-                    try:
+                if extra_server and extra_server.is_running():
+                    # Fallback: 使用极其简单的 Platform -> API Key 映射
+                    # 只有收到过该平台的消息，我们才知道该平台的 API Key，才能回传消息
+                    platform_map = getattr(global_api, "platform_map", {})
+                    target_api_key = platform_map.get(platform)
+                    
+                    if target_api_key:
                         # 构造 APIMessageBase
                         from maim_message.message import APIMessageBase, MessageDim
                         
@@ -226,16 +221,28 @@ async def _send_message(message: MessageSending, show_log=True) -> bool:
                             if show_log:
                                 logger.info(f"已通过API Server Fallback将消息 '{message_preview}' 发往平台'{platform}' (key: {target_api_key})")
                             return True
-                        else:
-                            logger.error(f"API Server Fallback发送失败: 目标用户(Key={target_api_key})无活跃连接")
-                            
-                    except Exception as fallback_error:
-                        logger.error(f"API Server Fallback发送出错: {fallback_error}")
-                else:
-                    logger.warning(f"Legacy API发送失败且无可用API Server缓存 (未收到过来自 '{platform}' 的消息，无法获取API Key)")
+            except Exception:
+                pass
             
-            # 如果没有fallback或fallback失败，抛出原始异常
-            raise legacy_error
+            # 如果 Fallback 失败，且存在 legacy 异常，则抛出 legacy 异常
+            if legacy_exception:
+                raise legacy_exception
+            return False
+
+        try:
+            send_result = await get_global_api().send_message(message)
+            if send_result:
+                if show_log:
+                    logger.info(f"已将消息  '{message_preview}'  发往平台'{message.message_info.platform}'")
+                return True
+            
+            # Legacy API 返回 False (发送失败但未报错)，尝试 Fallback
+            return await send_with_new_api()
+            
+        except Exception as legacy_e:
+            # Legacy API 抛出异常，尝试 Fallback
+            # 如果 Fallback 也失败，将重新抛出 legacy_e
+            return await send_with_new_api(legacy_exception=legacy_e)
 
     except Exception as e:
         logger.error(f"发送消息   '{message_preview}'   发往平台'{message.message_info.platform}' 失败: {str(e)}")
