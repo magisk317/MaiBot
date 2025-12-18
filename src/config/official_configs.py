@@ -135,14 +135,9 @@ class ChatConfig(ConfigBase):
 
             is_group = stream_type == "group"
 
-            import hashlib
+            from src.chat.message_receive.chat_stream import get_chat_manager
 
-            if is_group:
-                components = [platform, str(id_str)]
-            else:
-                components = [platform, str(id_str), "private"]
-            key = "_".join(components)
-            return hashlib.md5(key.encode()).hexdigest()
+            return get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
 
         except (ValueError, IndexError):
             return None
@@ -328,6 +323,13 @@ class ExpressionConfig(ConfigBase):
     enable_jargon_explanation: bool = True
     """是否在回复前尝试对上下文中的黑话进行解释（关闭可减少一次LLM调用，仅影响回复前的黑话匹配与解释，不影响黑话学习）"""
 
+    jargon_mode: Literal["context", "planner"] = "context"
+    """
+    黑话解释来源模式：
+    - "context": 使用上下文自动匹配黑话并解释（原有模式）
+    - "planner": 仅使用 Planner 在 reply 动作中给出的 unknown_words 列表进行黑话检索
+    """
+
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
         """
         解析流配置字符串并生成对应的 chat_id
@@ -350,15 +352,10 @@ class ExpressionConfig(ConfigBase):
             # 判断是否为群聊
             is_group = stream_type == "group"
 
-            # 使用与 ChatStream.get_stream_id 相同的逻辑生成 chat_id
-            import hashlib
+            # 使用 ChatManager 提供的接口生成 chat_id，避免在此重复实现逻辑
+            from src.chat.message_receive.chat_stream import get_chat_manager
 
-            if is_group:
-                components = [platform, str(id_str)]
-            else:
-                components = [platform, str(id_str), "private"]
-            key = "_".join(components)
-            return hashlib.md5(key.encode()).hexdigest()
+            return get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
 
         except (ValueError, IndexError):
             return None

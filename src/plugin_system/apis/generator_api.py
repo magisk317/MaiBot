@@ -86,6 +86,7 @@ async def generate_reply(
     reply_reason: str = "",
     available_actions: Optional[Dict[str, ActionInfo]] = None,
     chosen_actions: Optional[List["ActionPlannerInfo"]] = None,
+    unknown_words: Optional[List[str]] = None,
     enable_tool: bool = False,
     enable_splitter: bool = True,
     enable_chinese_typo: bool = True,
@@ -104,6 +105,7 @@ async def generate_reply(
         reply_reason: 回复原因
         available_actions: 可用动作
         chosen_actions: 已选动作
+        unknown_words: Planner 在 reply 动作中给出的未知词语列表，用于黑话检索
         enable_tool: 是否启用工具调用
         enable_splitter: 是否启用消息分割器
         enable_chinese_typo: 是否启用错字生成器
@@ -123,11 +125,24 @@ async def generate_reply(
             logger.error("[GeneratorAPI] 无法获取回复器")
             return False, None
 
-        if not extra_info and action_data:
-            extra_info = action_data.get("extra_info", "")
-
-        if not reply_reason and action_data:
-            reply_reason = action_data.get("reason", "")
+        if action_data:
+            if not extra_info:
+                extra_info = action_data.get("extra_info", "")
+            if not reply_reason:
+                reply_reason = action_data.get("reason", "")
+            # 仅在 reply 场景下使用的未知词语解析（Planner JSON 中下发）
+            if unknown_words is None:
+                uw = action_data.get("unknown_words")
+                if isinstance(uw, list):
+                    # 只保留非空字符串
+                    cleaned: List[str] = []
+                    for item in uw:
+                        if isinstance(item, str):
+                            s = item.strip()
+                            if s:
+                                cleaned.append(s)
+                    if cleaned:
+                        unknown_words = cleaned
 
         # 调用回复器生成回复
         success, llm_response = await replyer.generate_reply_with_context(
@@ -137,6 +152,7 @@ async def generate_reply(
             enable_tool=enable_tool,
             reply_message=reply_message,
             reply_reason=reply_reason,
+             unknown_words=unknown_words,
             think_level=think_level,
             from_plugin=from_plugin,
             stream_id=chat_stream.stream_id if chat_stream else chat_id,

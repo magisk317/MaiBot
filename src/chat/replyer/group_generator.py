@@ -35,7 +35,7 @@ from src.chat.replyer.prompt.lpmm_prompt import init_lpmm_prompt
 from src.chat.replyer.prompt.replyer_prompt import init_replyer_prompt
 from src.chat.replyer.prompt.rewrite_prompt import init_rewrite_prompt
 from src.memory_system.memory_retrieval import init_memory_retrieval_prompt, build_memory_retrieval_prompt
-from src.bw_learner.jargon_explainer import explain_jargon_in_context
+from src.bw_learner.jargon_explainer import explain_jargon_in_context, retrieve_concepts_with_jargon
 
 init_lpmm_prompt()
 init_replyer_prompt()
@@ -73,6 +73,7 @@ class DefaultReplyer:
         reply_message: Optional[DatabaseMessages] = None,
         reply_time_point: Optional[float] = time.time(),
         think_level: int = 1,
+        unknown_words: Optional[List[str]] = None,
     ) -> Tuple[bool, LLMGenerationDataModel]:
         # sourcery skip: merge-nested-ifs
         """
@@ -110,6 +111,7 @@ class DefaultReplyer:
                     reply_reason=reply_reason,
                     reply_time_point=reply_time_point,
                     think_level=think_level,
+                    unknown_words=unknown_words,
                 )
             llm_response.prompt = prompt
             llm_response.selected_expressions = selected_expressions
@@ -492,6 +494,53 @@ class DefaultReplyer:
         """当关闭黑话解释时使用的占位协程，避免额外的LLM调用"""
         return ""
 
+    async def _build_unknown_words_jargon(self, unknown_words: Optional[List[str]], chat_id: str) -> str:
+        """针对 Planner 提供的未知词语列表执行黑话检索"""
+        if not unknown_words:
+            return ""
+        # 清洗未知词语列表，只保留非空字符串
+        concepts: List[str] = []
+        for item in unknown_words:
+            if isinstance(item, str):
+                s = item.strip()
+                if s:
+                    concepts.append(s)
+        if not concepts:
+            return ""
+        try:
+            return await retrieve_concepts_with_jargon(concepts, chat_id)
+        except Exception as e:
+            logger.error(f"未知词语黑话检索失败: {e}")
+            return ""
+
+    async def _build_jargon_explanation(
+        self,
+        chat_id: str,
+        messages_short: List[DatabaseMessages],
+        chat_talking_prompt_short: str,
+        unknown_words: Optional[List[str]],
+    ) -> str:
+        """
+        统一的黑话解释构建函数：
+        - 根据 enable_jargon_explanation / jargon_mode 决定具体策略
+        """
+        enable_jargon_explanation = getattr(global_config.expression, "enable_jargon_explanation", True)
+        if not enable_jargon_explanation:
+            return ""
+
+        jargon_mode = getattr(global_config.expression, "jargon_mode", "context")
+
+        # planner 模式：仅使用 Planner 的 unknown_words
+        if jargon_mode == "planner":
+            return await self._build_unknown_words_jargon(unknown_words, chat_id)
+
+        # 默认 / context 模式：使用上下文自动匹配黑话
+        try:
+            return await explain_jargon_in_context(chat_id, messages_short, chat_talking_prompt_short)
+        except Exception as e:
+            logger.error(f"上下文黑话解释失败: {e}")
+            return ""
+
     def build_chat_history_prompts(
         self, message_list_before_now: List[DatabaseMessages], target_user_id: str, sender: str
     ) -> Tuple[str, str]:
@@ -676,16 +725,10 @@ class DefaultReplyer:
             # 判断是否为群聊
             is_group = stream_type == "group"
 
-            # 使用与 ChatStream.get_stream_id 相同的逻辑生成 chat_id
-            import hashlib
+            # 使用 ChatManager 提供的接口生成 chat_id，避免在此重复实现逻辑
+            from src.chat.message_receive.chat_stream import get_chat_manager
 
-            if is_group:
-                components = [platform, str(id_str)]
-            else:
-                components = [platform, str(id_str), "private"]
-            key = "_".join(components)
-            chat_id = hashlib.md5(key.encode()).hexdigest()
-
+            chat_id = get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
             return chat_id, prompt_content
 
         except (ValueError, IndexError):
@@ -739,6 +782,7 @@ class DefaultReplyer:
         enable_tool: bool = True,
         reply_time_point: Optional[float] = time.time(),
         think_level: int = 1,
+        unknown_words: Optional[List[str]] = None,
     ) -> Tuple[str, List[int], List[str], str]:
         """
         构建回复器上下文
@@ -823,14 +867,12 @@ class DefaultReplyer:
             show_actions=True,
         )
 
-        # 根据配置决定是否启用黑话解释
-        enable_jargon_explanation = getattr(global_config.expression, "enable_jargon_explanation", True)
-        if enable_jargon_explanation:
-            jargon_coroutine = explain_jargon_in_context(chat_id, message_list_before_short, chat_talking_prompt_short)
-        else:
-            jargon_coroutine = self._build_disabled_jargon_explanation()
+        # 统一黑话解释构建：根据配置选择上下文或 Planner 模式
+        jargon_coroutine = self._build_jargon_explanation(
+            chat_id, message_list_before_short, chat_talking_prompt_short, unknown_words
+        )
 
-        # 并行执行八个构建任务（包括黑话解释，可配置关闭）
+        # 并行执行构建任务（包括黑话解释，可配置关闭）
         task_results = await asyncio.gather(
             self._time_and_run_task(
                 self.build_expression_habits(chat_talking_prompt_short, target, reply_reason, think_level=think_level),

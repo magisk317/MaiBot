@@ -638,12 +638,27 @@ class HeartFChatting:
                         action_reasoning=reason,
                     )
 
+                    # 从 Planner 的 action_data 中提取未知词语列表（仅在 reply 时使用）
+                    unknown_words = None
+                    if isinstance(action_planner_info.action_data, dict):
+                        uw = action_planner_info.action_data.get("unknown_words")
+                        if isinstance(uw, list):
+                            cleaned_uw: List[str] = []
+                            for item in uw:
+                                if isinstance(item, str):
+                                    s = item.strip()
+                                    if s:
+                                        cleaned_uw.append(s)
+                            if cleaned_uw:
+                                unknown_words = cleaned_uw
+
                     success, llm_response = await generator_api.generate_reply(
                         chat_stream=self.chat_stream,
                         reply_message=action_planner_info.action_message,
                         available_actions=available_actions,
                         chosen_actions=chosen_action_plan_infos,
                         reply_reason=planner_reasoning,
+                        unknown_words=unknown_words,
                         enable_tool=global_config.tool.enable_tool,
                         request_type="replyer",
                         from_plugin=False,

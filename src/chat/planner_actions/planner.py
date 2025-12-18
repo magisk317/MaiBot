@@ -51,6 +51,8 @@ reply
 3.最好一次对一个话题进行回复，免得啰嗦或者回复内容太乱。
 4.不要选择回复你自己发送的消息
 5.不要单独对表情包进行回复
+6.将上下文中所有含义不明的，疑似黑话的，缩写词均写入unknown_words中
+7.用一句简单的话来描述当前回复场景，不超过10个字
 {reply_action_example}
 
 no_reply
@@ -478,10 +480,19 @@ class ActionPlanner:
             name_block = f"你的名字是{bot_name}{bot_nickname}，请注意哪些是你自己的发言。"
 
             # 根据 think_mode 配置决定 reply action 的示例 JSON
+            # 在 JSON 中直接作为 action 参数携带 unknown_words
             if global_config.chat.think_mode == "classic":
-                reply_action_example = '{{"action":"reply", "target_messamge_id":"消息id(m+数字)"}}'
+                reply_action_example = (
+                    '{{"action":"reply", "target_messamge_id":"消息id(m+数字)", '
+                    '"unknown_words":["词语1","词语2"]}}'
+                )
             else:
-                reply_action_example = '5.think_level表示思考深度，0表示该回复不需要思考和回忆，1表示该回复需要进行回忆和思考\n{{"action":"reply", "think_level":数值等级(0或1), "target_messamge_id":"消息id(m+数字)"}}'
+                reply_action_example = (
+                    "5.think_level表示思考深度，0表示该回复不需要思考和回忆，1表示该回复需要进行回忆和思考\n"
+                    + '{{"action":"reply", "think_level":数值等级(0或1), '
+                    '"target_messamge_id":"消息id(m+数字)", '
+                    '"unknown_words":["词语1","词语2"]}}'
+                )
 
             planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
             prompt = planner_prompt_template.format(
