@@ -22,7 +22,7 @@ sys.path.insert(0, project_root)
 # Import after setting up path (required for project imports)
 from src.common.database.database_model import Expression, ChatStreams  # noqa: E402
 from src.config.config import global_config  # noqa: E402
-import hashlib  # noqa: E402
+from src.chat.message_receive.chat_stream import get_chat_manager  # noqa: E402
 
 
 class TeeOutput:
@@ -57,7 +57,7 @@ class TeeOutput:
 
 def _parse_stream_config_to_chat_id(stream_config_str: str) -> str | None:
     """
-    解析'platform:id:type'为chat_id（与ExpressionSelector中的逻辑一致）
+    解析'platform:id:type'为chat_id，直接复用 ChatManager 的逻辑
     """
     try:
         parts = stream_config_str.split(":")
@@ -67,12 +67,7 @@ def _parse_stream_config_to_chat_id(stream_config_str: str) -> str | None:
         id_str = parts[1]
         stream_type = parts[2]
         is_group = stream_type == "group"
-        if is_group:
-            components = [platform, str(id_str)]
-        else:
-            components = [platform, str(id_str), "private"]
-        key = "_".join(components)
-        return hashlib.md5(key.encode()).hexdigest()
+        return get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
     except Exception:
         return None
 

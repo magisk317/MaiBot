@@ -554,16 +554,10 @@ class PrivateReplyer:
             # 判断是否为群聊
             is_group = stream_type == "group"
 
-            # 使用与 ChatStream.get_stream_id 相同的逻辑生成 chat_id
-            import hashlib
+            # 使用 ChatManager 提供的接口生成 chat_id，避免在此重复实现逻辑
+            from src.chat.message_receive.chat_stream import get_chat_manager
 
-            if is_group:
-                components = [platform, str(id_str)]
-            else:
-                components = [platform, str(id_str), "private"]
-            key = "_".join(components)
-            chat_id = hashlib.md5(key.encode()).hexdigest()
-
+            chat_id = get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
             return chat_id, prompt_content
 
         except (ValueError, IndexError):

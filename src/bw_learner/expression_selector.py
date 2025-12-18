@@ -1,6 +1,5 @@
 import json
 import time
-import hashlib
 
 from typing import List, Dict, Optional, Any, Tuple
 from json_repair import repair_json
@@ -11,6 +10,7 @@ from src.common.logger import get_logger
 from src.common.database.database_model import Expression
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.bw_learner.learner_utils import weighted_sample
+from src.chat.message_receive.chat_stream import get_chat_manager
 
 logger = get_logger("expression_selector")
 
@@ -67,7 +67,7 @@ class ExpressionSelector:
 
     @staticmethod
     def _parse_stream_config_to_chat_id(stream_config_str: str) -> Optional[str]:
-        """解析'platform:id:type'为chat_id（与get_stream_id一致）"""
+        """解析'platform:id:type'为chat_id，直接使用 ChatManager 提供的接口"""
         try:
             parts = stream_config_str.split(":")
             if len(parts) != 3:
@@ -76,12 +76,8 @@ class ExpressionSelector:
             id_str = parts[1]
             stream_type = parts[2]
             is_group = stream_type == "group"
-            if is_group:
-                components = [platform, str(id_str)]
-            else:
-                components = [platform, str(id_str), "private"]
-            key = "_".join(components)
-            return hashlib.md5(key.encode()).hexdigest()
+            # 统一通过 chat_manager 生成 stream_id，避免各处自行实现哈希逻辑
+            return get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
         except Exception:
             return None
 
