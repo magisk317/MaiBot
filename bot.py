@@ -34,7 +34,10 @@ else:
         print(f"自动创建 .env 失败: {e}")
         raise
 
-initialize_logging()
+# 检查是否是 Worker 进程，只在 Worker 进程中输出详细的初始化信息
+# Runner 进程只需要基本的日志功能，不需要详细的初始化日志
+is_worker = os.environ.get("MAIBOT_WORKER_PROCESS") == "1"
+initialize_logging(verbose=is_worker)
 install(extra_lines=3)
 logger = get_logger("main")
 
@@ -101,8 +104,10 @@ if os.environ.get("MAIBOT_WORKER_PROCESS") != "1":
 # 以下是 Worker 进程的逻辑
 
 # 最早期初始化日志系统，确保所有后续模块都使用正确的日志格式
-# from src.common.logger import initialize_logging, get_logger, shutdown_logging  # noqa
-# initialize_logging()
+# 注意：Runner 进程已经在第 37 行初始化了日志系统，但 Worker 进程是独立进程，需要重新初始化
+# 由于 Runner 和 Worker 是不同进程，它们有独立的内存空间，所以都会初始化一次
+# 这是正常的，但为了避免重复的初始化日志，我们在 initialize_logging() 中添加了防重复机制
+# 不过由于是不同进程，每个进程仍会初始化一次，这是预期的行为
 
 from src.main import MainSystem  # noqa
 from src.manager.async_task_manager import async_task_manager  # noqa
