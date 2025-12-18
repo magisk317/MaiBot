@@ -50,12 +50,16 @@
 
 
 可前往 [Release](https://github.com/MaiM-with-u/MaiBot/releases/) 页面下载最新版本
+
 可前往 [启动器发布页面](https://github.com/MaiM-with-u/mailauncher/releases/)下载最新启动器
+
+注意，启动器处于早期开发版本，仅支持MacOS
+
 **GitHub 分支说明：**
 - `main`: 稳定发布版本(推荐)
 
-
 - `dev`: 开发测试版本(不稳定)
+
 - `classical`: 经典版本(停止维护)
 
 ### 最新版本部署教程
@@ -69,7 +73,7 @@
 
 ## 💬 讨论
 
-**技术交流群：**
+**技术交流群/答疑群：**
   [麦麦脑电图](https://qm.qq.com/q/RzmCiRtHEW) | 
   [麦麦大脑磁共振](https://qm.qq.com/q/VQ3XZrWgMs) | 
   [麦麦要当VTB](https://qm.qq.com/q/wGePTl1UyY) | 
@@ -79,7 +83,7 @@
 **聊天吹水群：**
 - [麦麦之闲聊群](https://qm.qq.com/q/JxvHZnxyec)
 
-  麦麦相关闲聊群
+  麦麦相关闲聊群，此群仅用于聊天，提问部署/技术问题可能不会快速得到答案
 
 **插件开发/测试版讨论群：**
 - [插件开发群](https://qm.qq.com/q/1036092828)
