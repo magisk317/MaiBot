@@ -211,7 +211,40 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
     if len_text < 3:
         return list(text) if random.random() < 0.01 else [text]
 
-    # 定义分隔符（包含换行符，换行符必须强制分割）
+    # 先标记哪些位置位于成对引号内部，避免在引号内部进行句子分割
+    # 支持的引号包括：中英文单/双引号和常见中文书名号/引号
+    quote_chars = {
+        '"',
+        "'",
+        "“",
+        "”",
+        "‘",
+        "’",
+        "「",
+        "」",
+        "『",
+        "』",
+    }
+    inside_quote = [False] * len_text
+    in_quote = False
+    current_quote_char = ""
+    for idx, ch in enumerate(text):
+        if ch in quote_chars:
+            # 遇到引号时切换状态（英文引号本身开闭相同，用同一个字符表示）
+            if not in_quote:
+                in_quote = True
+                current_quote_char = ch
+                inside_quote[idx] = False
+            else:
+                # 只有遇到同一类引号才视为关闭
+                if ch == current_quote_char or ch in {'"', "'"} and current_quote_char in {'"', "'"}:
+                    in_quote = False
+                    current_quote_char = ""
+                inside_quote[idx] = False
+        else:
+            inside_quote[idx] = in_quote
+
+    # 定义分隔符（包含换行符）
     separators = {"，", ",", " ", "。", ";", "\n"}
     segments = []
     current_segment = ""
@@ -221,31 +254,35 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
     while i < len(text):
         char = text[i]
         if char in separators:
-            # 换行符必须强制分割，不受其他规则影响
-            if char == "\n":
-                can_split = True
+            # 引号内部一律不作为分割点（包括换行）
+            if inside_quote[i]:
+                can_split = False
             else:
-                # 检查分割条件
-                can_split = True
-                # 检查分隔符左右是否有冒号（中英文），如果有则不分割
-                if i > 0:
-                    prev_char = text[i - 1]
-                    if prev_char in {":", "："}:
-                        can_split = False
-                if i < len(text) - 1:
-                    next_char = text[i + 1]
-                    if next_char in {":", "："}:
-                        can_split = False
-                
-                # 如果左右没有冒号，再检查空格的特殊情况
-                if can_split and char == " " and i > 0 and i < len(text) - 1:
-                    prev_char = text[i - 1]
-                    next_char = text[i + 1]
-                    # 不分割数字和数字、数字和英文、英文和数字、英文和英文之间的空格
-                    prev_is_alnum = prev_char.isdigit() or is_english_letter(prev_char)
-                    next_is_alnum = next_char.isdigit() or is_english_letter(next_char)
-                    if prev_is_alnum and next_is_alnum:
-                        can_split = False
+                # 换行符在不在引号内时都强制分割
+                if char == "\n":
+                    can_split = True
+                else:
+                    # 检查分割条件
+                    can_split = True
+                    # 检查分隔符左右是否有冒号（中英文），如果有则不分割
+                    if i > 0:
+                        prev_char = text[i - 1]
+                        if prev_char in {":", "："}:
+                            can_split = False
+                    if i < len(text) - 1:
+                        next_char = text[i + 1]
+                        if next_char in {":", "："}:
+                            can_split = False
+
+                    # 如果左右没有冒号，再检查空格的特殊情况
+                    if can_split and char == " " and i > 0 and i < len(text) - 1:
+                        prev_char = text[i - 1]
+                        next_char = text[i + 1]
+                        # 不分割数字和数字、数字和英文、英文和数字、英文和英文之间的空格
+                        prev_is_alnum = prev_char.isdigit() or is_english_letter(prev_char)
+                        next_is_alnum = next_char.isdigit() or is_english_letter(next_char)
+                        if prev_is_alnum and next_is_alnum:
+                            can_split = False
 
             if can_split:
                 # 只有当当前段不为空时才添加

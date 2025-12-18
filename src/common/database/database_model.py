@@ -326,6 +326,7 @@ class Expression(BaseModel):
     context = TextField(null=True)
 
     content_list = TextField(null=True)
+    style_list = TextField(null=True)  # 存储相似的 style，格式与 content_list 相同（JSON 数组）
     count = IntegerField(default=1)
     last_active_time = FloatField()
     chat_id = TextField(index=True)

@@ -18,6 +18,7 @@ from src.bw_learner.learner_utils import (
     is_bot_message,
     build_context_paragraph,
     contains_bot_self_name,
+    calculate_style_similarity,
 )
 from src.bw_learner.jargon_miner import miner_manager
 from json_repair import repair_json
@@ -405,17 +406,37 @@ class ExpressionLearner:
         context: str,
         current_time: float,
     ) -> None:
-        expr_obj = Expression.select().where((Expression.chat_id == self.chat_id) & (Expression.style == style)).first()
+        # 第一层：检查是否有完全一致的 style（检查 style 字段和 style_list）
+        expr_obj = await self._find_exact_style_match(style)
 
         if expr_obj:
+            # 找到完全匹配的 style，合并到现有记录（不使用 LLM 总结）
             await self._update_existing_expression(
                 expr_obj=expr_obj,
                 situation=situation,
+                style=style,
                 context=context,
                 current_time=current_time,
+                use_llm_summary=False,
             )
             return
 
+        # 第二层：检查是否有相似的 style（相似度 >= 0.75，检查 style 字段和 style_list）
+        similar_expr_obj = await self._find_similar_style_expression(style, similarity_threshold=0.75)
+
+        if similar_expr_obj:
+            # 找到相似的 style，合并到现有记录（使用 LLM 总结）
+            await self._update_existing_expression(
+                expr_obj=similar_expr_obj,
+                situation=situation,
+                style=style,
+                context=context,
+                current_time=current_time,
+                use_llm_summary=True,
+            )
+            return
+
+        # 没有找到匹配的记录，创建新记录
         await self._create_expression_record(
             situation=situation,
             style=style,
@@ -431,12 +452,14 @@ class ExpressionLearner:
         current_time: float,
     ) -> None:
         content_list = [situation]
-        formatted_situation = await self._compose_situation_text(content_list, 1, situation)
+        # 创建新记录时，直接使用原始的 situation，不进行总结
+        formatted_situation = situation
 
         Expression.create(
             situation=formatted_situation,
             style=style,
             content_list=json.dumps(content_list, ensure_ascii=False),
+            style_list=None,  # 新记录初始时 style_list 为空
             count=1,
             last_active_time=current_time,
             chat_id=self.chat_id,
@@ -448,23 +471,57 @@ class ExpressionLearner:
         self,
         expr_obj: Expression,
         situation: str,
+        style: str,
         context: str,
         current_time: float,
+        use_llm_summary: bool = True,
     ) -> None:
+        """
+        更新现有 Expression 记录（style 完全匹配或相似的情况）
+        将新的 situation 添加到 content_list，将新的 style 添加到 style_list（如果不同）
+        
+        Args:
+            use_llm_summary: 是否使用 LLM 进行总结，完全匹配时为 False，相似匹配时为 True
+        """
+        # 更新 content_list（添加新的 situation）
         content_list = self._parse_content_list(expr_obj.content_list)
         content_list.append(situation)
-
         expr_obj.content_list = json.dumps(content_list, ensure_ascii=False)
+
+        # 更新 style_list（如果 style 不同，添加到 style_list）
+        style_list = self._parse_style_list(expr_obj.style_list)
+        # 将原有的 style 也加入 style_list（如果还没有的话）
+        if expr_obj.style and expr_obj.style not in style_list:
+            style_list.append(expr_obj.style)
+        # 如果新的 style 不在 style_list 中，添加它
+        if style not in style_list:
+            style_list.append(style)
+        expr_obj.style_list = json.dumps(style_list, ensure_ascii=False)
+
+        # 更新其他字段
         expr_obj.count = (expr_obj.count or 0) + 1
         expr_obj.last_active_time = current_time
         expr_obj.context = context
 
-        new_situation = await self._compose_situation_text(
-            content_list=content_list,
-            count=expr_obj.count,
-            fallback=expr_obj.situation,
-        )
-        expr_obj.situation = new_situation
+        if use_llm_summary:
+            # 相似匹配时，使用 LLM 重新组合 situation 和 style
+            new_situation = await self._compose_situation_text(
+                content_list=content_list,
+                count=expr_obj.count,
+                fallback=expr_obj.situation,
+            )
+            expr_obj.situation = new_situation
+
+            new_style = await self._compose_style_text(
+                style_list=style_list,
+                count=expr_obj.count,
+                fallback=expr_obj.style or style,
+            )
+            expr_obj.style = new_style
+        else:
+            # 完全匹配时，不进行 LLM 总结，保持原有的 situation 和 style 不变
+            # 只更新 content_list 和 style_list
+            pass
 
         expr_obj.save()
 
@@ -477,12 +534,119 @@ class ExpressionLearner:
             return []
         return [str(item) for item in data if isinstance(item, str)] if isinstance(data, list) else []
 
+    def _parse_style_list(self, stored_list: Optional[str]) -> List[str]:
+        """解析 style_list JSON 字符串为列表，逻辑与 _parse_content_list 相同"""
+        if not stored_list:
+            return []
+        try:
+            data = json.loads(stored_list)
+        except json.JSONDecodeError:
+            return []
+        return [str(item) for item in data if isinstance(item, str)] if isinstance(data, list) else []
+
+    async def _find_exact_style_match(self, style: str) -> Optional[Expression]:
+        """
+        查找具有完全匹配 style 的 Expression 记录
+        检查 style 字段和 style_list 中的每一项
+        
+        Args:
+            style: 要查找的 style
+            
+        Returns:
+            找到的 Expression 对象，如果没有找到则返回 None
+        """
+        # 查询同一 chat_id 的所有记录
+        all_expressions = Expression.select().where(Expression.chat_id == self.chat_id)
+        
+        for expr in all_expressions:
+            # 检查 style 字段
+            if expr.style == style:
+                return expr
+            
+            # 检查 style_list 中的每一项
+            style_list = self._parse_style_list(expr.style_list)
+            if style in style_list:
+                return expr
+        
+        return None
+
+    async def _find_similar_style_expression(self, style: str, similarity_threshold: float = 0.75) -> Optional[Expression]:
+        """
+        查找具有相似 style 的 Expression 记录
+        检查 style 字段和 style_list 中的每一项
+        
+        Args:
+            style: 要查找的 style
+            similarity_threshold: 相似度阈值，默认 0.75
+            
+        Returns:
+            找到的最相似的 Expression 对象，如果没有找到则返回 None
+        """
+        # 查询同一 chat_id 的所有记录
+        all_expressions = Expression.select().where(Expression.chat_id == self.chat_id)
+        
+        best_match = None
+        best_similarity = 0.0
+        
+        for expr in all_expressions:
+            # 检查 style 字段
+            similarity = calculate_style_similarity(style, expr.style)
+            if similarity >= similarity_threshold and similarity > best_similarity:
+                best_similarity = similarity
+                best_match = expr
+            
+            # 检查 style_list 中的每一项
+            style_list = self._parse_style_list(expr.style_list)
+            for existing_style in style_list:
+                similarity = calculate_style_similarity(style, existing_style)
+                if similarity >= similarity_threshold and similarity > best_similarity:
+                    best_similarity = similarity
+                    best_match = expr
+        
+        if best_match:
+            logger.debug(f"找到相似的 style: 相似度={best_similarity:.3f}, 现有='{best_match.style}', 新='{style}'")
+        
+        return best_match
+
     async def _compose_situation_text(self, content_list: List[str], count: int, fallback: str = "") -> str:
         sanitized = [c.strip() for c in content_list if c.strip()]
         summary = await self._summarize_situations(sanitized)
         if summary:
             return summary
         return "/".join(sanitized) if sanitized else fallback
+
+    async def _compose_style_text(self, style_list: List[str], count: int, fallback: str = "") -> str:
+        """
+        组合 style 文本，如果 style_list 有多个元素则尝试总结
+        """
+        sanitized = [s.strip() for s in style_list if s.strip()]
+        if len(sanitized) > 1:
+            # 只有当有多个 style 时才尝试总结
+            summary = await self._summarize_styles(sanitized)
+            if summary:
+                return summary
+        # 如果只有一个或总结失败，返回第一个或 fallback
+        return sanitized[0] if sanitized else fallback
+
+    async def _summarize_styles(self, styles: List[str]) -> Optional[str]:
+        """总结多个 style，生成一个概括性的 style 描述"""
+        if not styles or len(styles) <= 1:
+            return None
+
+        prompt = (
+            "请阅读以下多个语言风格/表达方式，并将它们概括成一句简短的话，"
+            "长度不超过20个字，保留共同特点：\n"
+            f"{chr(10).join(f'- {s}' for s in styles[-10:])}\n只输出概括内容。"
+        )
+
+        try:
+            summary, _ = await self.summary_model.generate_response_async(prompt, temperature=0.2)
+            summary = summary.strip()
+            if summary:
+                return summary
+        except Exception as e:
+            logger.error(f"概括表达风格失败: {e}")
+        return None
 
     async def _summarize_situations(self, situations: List[str]) -> Optional[str]:
         if not situations:
