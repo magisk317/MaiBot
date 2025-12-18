@@ -20,6 +20,7 @@ def init_replyer_prompt():
 请注意把握聊天内容，不要回复的太有条理。
 {reply_style}
 请注意不要输出多余内容(包括不必要的前后缀，冒号，括号，表情包，at或 @等 )，只输出发言内容就好。
+最好一次对一个话题进行回复，免得啰嗦或者回复内容太乱。
 现在，你说：""",
         "replyer_prompt_0",
     )
@@ -36,7 +37,8 @@ def init_replyer_prompt():
 {reply_target_block}。
 {planner_reasoning}
 {identity}
-{chat_prompt}你正在群里聊天,现在请你读读之前的聊天记录，把握当前的话题，然后给出日常且简短的回复，。
+{chat_prompt}你正在群里聊天,现在请你读读之前的聊天记录，把握当前的话题，然后给出日常且简短的回复。
+最好一次对一个话题进行回复，免得啰嗦或者回复内容太乱。
 {keywords_reaction_prompt}
 请注意把握聊天内容。
 {reply_style}

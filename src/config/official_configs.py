@@ -43,7 +43,13 @@ class PersonalityConfig(ConfigBase):
     """人格"""
 
     reply_style: str = ""
-    """表达风格"""
+    """默认表达风格"""
+
+    multiple_reply_style: list[str] = field(default_factory=lambda: [])
+    """可选的多种表达风格列表，当配置不为空时可按概率随机替换 reply_style"""
+
+    multiple_probability: float = 0.0
+    """每次构建回复时，从 multiple_reply_style 中随机替换 reply_style 的概率（0.0-1.0）"""
 
     plan_style: str = ""
     """说话规则，行为风格"""
