@@ -554,7 +554,7 @@ class ExpressionLearner:
     async def _find_exact_style_match(self, style: str) -> Optional[Expression]:
         """
         查找具有完全匹配 style 的 Expression 记录
-        检查 style 字段和 style_list 中的每一项
+        只检查 style_list 中的每一项（不检查 style 字段，因为 style 可能是总结后的概括性描述）
         
         Args:
             style: 要查找的 style
@@ -566,11 +566,7 @@ class ExpressionLearner:
         all_expressions = Expression.select().where(Expression.chat_id == self.chat_id)
         
         for expr in all_expressions:
-            # 检查 style 字段
-            if expr.style == style:
-                return expr
-            
-            # 检查 style_list 中的每一项
+            # 只检查 style_list 中的每一项
             style_list = self._parse_style_list(expr.style_list)
             if style in style_list:
                 return expr
@@ -580,7 +576,7 @@ class ExpressionLearner:
     async def _find_similar_style_expression(self, style: str, similarity_threshold: float = 0.75) -> Optional[Expression]:
         """
         查找具有相似 style 的 Expression 记录
-        检查 style 字段和 style_list 中的每一项
+        只检查 style_list 中的每一项（不检查 style 字段，因为 style 可能是总结后的概括性描述）
         
         Args:
             style: 要查找的 style
@@ -596,13 +592,7 @@ class ExpressionLearner:
         best_similarity = 0.0
         
         for expr in all_expressions:
-            # 检查 style 字段
-            similarity = calculate_style_similarity(style, expr.style)
-            if similarity >= similarity_threshold and similarity > best_similarity:
-                best_similarity = similarity
-                best_match = expr
-            
-            # 检查 style_list 中的每一项
+            # 只检查 style_list 中的每一项
             style_list = self._parse_style_list(expr.style_list)
             for existing_style in style_list:
                 similarity = calculate_style_similarity(style, existing_style)
@@ -640,19 +630,48 @@ class ExpressionLearner:
         if not styles or len(styles) <= 1:
             return None
 
-        prompt = (
-            "请阅读以下多个语言风格/表达方式，并将它们概括成一句简短的话，"
-            "长度不超过20个字，保留共同特点：\n"
-            f"{chr(10).join(f'- {s}' for s in styles[-10:])}\n只输出概括内容。"
-        )
+        # 计算输入列表中最长项目的长度
+        max_input_length = max(len(s) for s in styles) if styles else 0
+        max_summary_length = max_input_length * 2
+        
+        # 最多重试3次
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            # 如果是重试，在 prompt 中强调要更简洁
+            length_hint = f"长度不超过{max_summary_length}个字符，" if retry_count > 0 else "长度不超过20个字，"
+            
+            prompt = (
+                "请阅读以下多个语言风格/表达方式，对其进行总结。"
+                "不要对其进行语义概括，而是尽可能找出其中不变的部分或共同表达，尽量使用原文"
+                f"{length_hint}保留共同特点：\n"
+                f"{chr(10).join(f'- {s}' for s in styles[-10:])}\n只输出概括内容。不要输出其他内容"
+            )
 
-        try:
-            summary, _ = await self.summary_model.generate_response_async(prompt, temperature=0.2)
-            summary = summary.strip()
-            if summary:
-                return summary
-        except Exception as e:
-            logger.error(f"概括表达风格失败: {e}")
+            try:
+                summary, _ = await self.summary_model.generate_response_async(prompt, temperature=0.2)
+                summary = summary.strip()
+                if summary:
+                    # 检查总结长度是否超过限制
+                    if len(summary) <= max_summary_length:
+                        return summary
+                    else:
+                        retry_count += 1
+                        logger.debug(
+                            f"总结长度 {len(summary)} 超过限制 {max_summary_length} "
+                            f"(输入最长项长度: {max_input_length})，重试第 {retry_count} 次"
+                        )
+                        continue
+            except Exception as e:
+                logger.error(f"概括表达风格失败: {e}")
+                return None
+        
+        # 如果重试多次后仍然超过长度，返回 None（不进行总结）
+        logger.warning(
+            f"总结多次后仍超过长度限制，放弃总结。"
+            f"输入最长项长度: {max_input_length}, 最大允许长度: {max_summary_length}"
+        )
         return None
 
     async def _summarize_situations(self, situations: List[str]) -> Optional[str]:
