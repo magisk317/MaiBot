@@ -210,7 +210,7 @@ class WebUIServer:
                 logger.info(f"💡 IPv6 本机访问: http://[::1]:{self.port}")
                 logger.info(f"💡 IPv4 本机访问: http://127.0.0.1:{self.port}")
             elif self.host == "::1":
-                logger.info(f"💡 仅支持 IPv6 本地访问")
+                logger.info("💡 仅支持 IPv6 本地访问")
         else:
             # IPv4 地址
             logger.info(f"🌐 访问地址: http://{self.host}:{self.port}")
