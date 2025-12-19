@@ -44,10 +44,9 @@ class MainSystem:
 
     def _setup_webui_server(self):
         """设置独立的 WebUI 服务器"""
-        import os
+        from src.config.config import global_config
 
-        webui_enabled = os.getenv("WEBUI_ENABLED", "false").lower() == "true"
-        if not webui_enabled:
+        if not global_config.webui.enabled:
             logger.info("WebUI 已禁用")
             return
 

@@ -34,6 +34,7 @@ from src.config.official_configs import (
     MemoryConfig,
     DebugConfig,
     DreamConfig,
+    WebUIConfig,
 )
 
 from .api_ada_configs import (
@@ -347,6 +348,7 @@ class Config(ConfigBase):
     response_post_process: ResponsePostProcessConfig
     response_splitter: ResponseSplitterConfig
     telemetry: TelemetryConfig
+    webui: WebUIConfig
     experimental: ExperimentalConfig
     maim_message: MaimMessageConfig
     lpmm_knowledge: LPMMKnowledgeConfig

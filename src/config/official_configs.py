@@ -598,6 +598,38 @@ class TelemetryConfig(ConfigBase):
 
 
 @dataclass
+class WebUIConfig(ConfigBase):
+    """WebUI配置类"""
+
+    enabled: bool = True
+    """是否启用WebUI"""
+
+    mode: Literal["development", "production"] = "production"
+    """运行模式：development(开发) 或 production(生产)"""
+
+    host: str = "0.0.0.0"
+    """WebUI服务器监听地址"""
+
+    port: int = 8001
+    """WebUI服务器端口"""
+
+    anti_crawler_mode: Literal["false", "strict", "loose", "basic"] = "basic"
+    """防爬虫模式：false(禁用) / strict(严格) / loose(宽松) / basic(基础-只记录不阻止)"""
+
+    allowed_ips: str = "127.0.0.1"
+    """IP白名单（逗号分隔，支持精确IP、CIDR格式和通配符）"""
+
+    trusted_proxies: str = ""
+    """信任的代理IP列表（逗号分隔），只有来自这些IP的X-Forwarded-For才被信任"""
+
+    trust_xff: bool = False
+    """是否启用X-Forwarded-For代理解析（默认false）"""
+
+    secure_cookie: bool = False
+    """是否启用安全Cookie（仅通过HTTPS传输，默认false）"""
+
+
+@dataclass
 class DebugConfig(ConfigBase):
     """调试配置类"""
 
@@ -721,6 +753,18 @@ class LPMMKnowledgeConfig(ConfigBase):
 
     embedding_dimension: int = 1024
     """嵌入向量维度，应该与模型的输出维度一致"""
+
+    max_embedding_workers: int = 3
+    """嵌入/抽取并发线程数"""
+
+    embedding_chunk_size: int = 4
+    """每批嵌入的条数"""
+
+    max_synonym_entities: int = 2000
+    """同义边参与的实体数上限，超限则跳过"""
+
+    enable_ppr: bool = True
+    """是否启用PPR，低配机器可关闭"""
 
 
 @dataclass

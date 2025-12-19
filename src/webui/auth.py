@@ -3,10 +3,10 @@ WebUI 认证模块
 提供统一的认证依赖，支持 Cookie 和 Header 两种方式
 """
 
-import os
 from typing import Optional
 from fastapi import HTTPException, Cookie, Header, Response, Request
 from src.common.logger import get_logger
+from src.config.config import global_config
 from .token_manager import get_token_manager
 
 logger = get_logger("webui.auth")
@@ -23,23 +23,18 @@ def _is_secure_environment() -> bool:
     Returns:
         bool: 如果应该使用 secure cookie 则返回 True
     """
-    # 检查环境变量
-    secure_cookie_env = os.environ.get("WEBUI_SECURE_COOKIE", "")
-    if secure_cookie_env.lower() in ("true", "1", "yes"):
-        logger.info(f"WEBUI_SECURE_COOKIE 设置为 {secure_cookie_env}，启用 secure cookie")
+    # 从配置读取
+    if global_config.webui.secure_cookie:
+        logger.info("配置中启用了 secure_cookie")
         return True
-    if secure_cookie_env.lower() in ("false", "0", "no"):
-        logger.info(f"WEBUI_SECURE_COOKIE 设置为 {secure_cookie_env}，禁用 secure cookie")
-        return False
-
+    
     # 检查是否是生产环境
-    env = os.environ.get("WEBUI_MODE", "").lower()
-    if env in ("production", "prod"):
-        logger.info(f"WEBUI_MODE 设置为 {env}，启用 secure cookie")
+    if global_config.webui.mode == "production":
+        logger.info("WebUI运行在生产模式，启用 secure cookie")
         return True
 
     # 默认：开发环境不启用（因为通常是 HTTP）
-    logger.debug(f"未设置特殊环境变量 (WEBUI_SECURE_COOKIE={secure_cookie_env}, WEBUI_MODE={env})，禁用 secure cookie")
+    logger.debug("WebUI运行在开发模式，禁用 secure cookie")
     return False
 
 
@@ -111,7 +106,7 @@ def set_auth_cookie(response: Response, token: str, request: Optional[Request] =
             logger.warning("=" * 80)
             logger.warning("检测到 HTTP 连接但环境配置要求 HTTPS (secure cookie)")
             logger.warning("已自动禁用 secure 标志以允许登录，但建议修改配置：")
-            logger.warning("1. 在 .env 文件中设置: WEBUI_SECURE_COOKIE=false")
+            logger.warning("1. 在配置文件中设置: webui.secure_cookie = false")
             logger.warning("2. 如果使用反向代理，请确保正确配置 X-Forwarded-Proto 头")
             logger.warning("=" * 80)
             is_secure = False

@@ -358,12 +358,9 @@ class KGManager:
             paragraph_search_result: ParagraphEmbedding的搜索结果（paragraph_hash, similarity）
             embed_manager: EmbeddingManager对象
         """
-        # 性能保护：关闭或超限时直接返回向量检索结果（仅基于节点规模与开关）
-        if (
-            not global_config.lpmm_knowledge.enable_ppr
-            or len(self.graph.get_node_list()) > global_config.lpmm_knowledge.ppr_node_cap
-        ):
-            logger.info("PPR 已禁用或超出阈值，使用纯向量检索结果")
+        # 性能保护：关闭时直接返回向量检索结果
+        if not global_config.lpmm_knowledge.enable_ppr:
+            logger.info("PPR 已禁用，使用纯向量检索结果")
             return paragraph_search_result, None
         # 图中存在的节点总集
         existed_nodes = self.graph.get_node_list()
