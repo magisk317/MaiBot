@@ -23,3 +23,4 @@ def make_delete_jargon(chat_id: str):  # chat_id 目前未直接使用，预留�
             return f"delete_jargon 执行失败: {e}"
 
     return delete_jargon
+

@@ -736,6 +736,13 @@ class DreamConfig(ConfigBase):
     first_delay_seconds: int = 60
     """程序启动后首次做梦前的延迟时间（秒），默认60秒"""
 
+    dream_send: str = ""
+    """
+    做梦结果推送目标，格式为 "platform:user_id"
+    例如: "qq:123456" 表示在做梦结束后，将梦境文本额外发送给该QQ私聊用户。
+    为空字符串时不推送。
+    """
+
     dream_time_ranges: list[str] = field(default_factory=lambda: [])
     """
     做梦时间段配置列表，格式：["HH:MM-HH:MM", ...]

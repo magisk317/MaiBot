@@ -212,3 +212,4 @@ def make_search_chat_history(chat_id: str):
             return f"search_chat_history 执行失败: {e}"
 
     return search_chat_history
+
