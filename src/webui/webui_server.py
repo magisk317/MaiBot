@@ -201,9 +201,21 @@ class WebUIServer:
         self._server = UvicornServer(config=config)
 
         logger.info("🌐 WebUI 服务器启动中...")
-        logger.info(f"🌐 访问地址: http://{self.host}:{self.port}")
-        if self.host == "0.0.0.0":
-            logger.info(f"本机访问请使用 http://localhost:{self.port}")
+        
+        # 根据地址类型显示正确的访问地址
+        if ':' in self.host:
+            # IPv6 地址需要用方括号包裹
+            logger.info(f"🌐 访问地址: http://[{self.host}]:{self.port}")
+            if self.host == "::":
+                logger.info(f"💡 IPv6 本机访问: http://[::1]:{self.port}")
+                logger.info(f"💡 IPv4 本机访问: http://127.0.0.1:{self.port}")
+            elif self.host == "::1":
+                logger.info(f"💡 仅支持 IPv6 本地访问")
+        else:
+            # IPv4 地址
+            logger.info(f"🌐 访问地址: http://{self.host}:{self.port}")
+            if self.host == "0.0.0.0":
+                logger.info(f"💡 本机访问: http://localhost:{self.port} 或 http://127.0.0.1:{self.port}")
 
         try:
             await self._server.serve()
@@ -221,14 +233,24 @@ class WebUIServer:
             raise
 
     def _check_port_available(self) -> bool:
-        """检查端口是否可用"""
+        """检查端口是否可用（支持 IPv4 和 IPv6）"""
         import socket
 
+        # 判断使用 IPv4 还是 IPv6
+        if ':' in self.host:
+            # IPv6 地址
+            family = socket.AF_INET6
+            test_host = self.host if self.host != "::" else "::1"
+        else:
+            # IPv4 地址
+            family = socket.AF_INET
+            test_host = self.host if self.host != "0.0.0.0" else "127.0.0.1"
+
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            with socket.socket(family, socket.SOCK_STREAM) as s:
                 s.settimeout(1)
                 # 尝试绑定端口
-                s.bind((self.host if self.host != "0.0.0.0" else "127.0.0.1", self.port))
+                s.bind((test_host, self.port))
                 return True
         except OSError:
             return False
