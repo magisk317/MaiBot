@@ -483,14 +483,14 @@ class ActionPlanner:
             # 在 JSON 中直接作为 action 参数携带 unknown_words
             if global_config.chat.think_mode == "classic":
                 reply_action_example = (
-                    '{{"action":"reply", "target_messamge_id":"消息id(m+数字)", '
+                    '{{"action":"reply", "target_message_id":"消息id(m+数字)", '
                     '"unknown_words":["词语1","词语2"]}}'
                 )
             else:
                 reply_action_example = (
                     "5.think_level表示思考深度，0表示该回复不需要思考和回忆，1表示该回复需要进行回忆和思考\n"
                     + '{{"action":"reply", "think_level":数值等级(0或1), '
-                    '"target_messamge_id":"消息id(m+数字)", '
+                    '"target_message_id":"消息id(m+数字)", '
                     '"unknown_words":["词语1","词语2"]}}'
                 )
 
@@ -728,23 +728,27 @@ class ActionPlanner:
                             # 尝试解析每一行作为独立的JSON对象
                             json_obj = json.loads(repair_json(line))
                             if isinstance(json_obj, dict):
-                                json_objects.append(json_obj)
+                                # 过滤掉空字典，避免单个 { 字符被错误修复为 {} 的情况
+                                if json_obj:
+                                    json_objects.append(json_obj)
                             elif isinstance(json_obj, list):
                                 for item in json_obj:
-                                    if isinstance(item, dict):
+                                    if isinstance(item, dict) and item:
                                         json_objects.append(item)
                         except json.JSONDecodeError:
                             # 如果单行解析失败，尝试将整个块作为一个JSON对象或数组
                             pass
 
-                    # 如果按行解析没有成功，尝试将整个块作为一个JSON对象或数组
+                    # 如果按行解析没有成功（或只得到空字典），尝试将整个块作为一个JSON对象或数组
                     if not json_objects:
                         json_obj = json.loads(repair_json(json_str))
                         if isinstance(json_obj, dict):
-                            json_objects.append(json_obj)
+                            # 过滤掉空字典
+                            if json_obj:
+                                json_objects.append(json_obj)
                         elif isinstance(json_obj, list):
                             for item in json_obj:
-                                if isinstance(item, dict):
+                                if isinstance(item, dict) and item:
                                     json_objects.append(item)
             except Exception as e:
                 logger.warning(f"解析JSON块失败: {e}, 块内容: {match[:100]}...")
@@ -779,23 +783,27 @@ class ActionPlanner:
                                 try:
                                     json_obj = json.loads(repair_json(line))
                                     if isinstance(json_obj, dict):
-                                        json_objects.append(json_obj)
+                                        # 过滤掉空字典，避免单个 { 字符被错误修复为 {} 的情况
+                                        if json_obj:
+                                            json_objects.append(json_obj)
                                     elif isinstance(json_obj, list):
                                         for item in json_obj:
-                                            if isinstance(item, dict):
+                                            if isinstance(item, dict) and item:
                                                 json_objects.append(item)
                                 except json.JSONDecodeError:
                                     pass
 
-                            # 如果按行解析没有成功，尝试将整个块作为一个JSON对象或数组
+                            # 如果按行解析没有成功（或只得到空字典），尝试将整个块作为一个JSON对象或数组
                             if not json_objects:
                                 try:
                                     json_obj = json.loads(repair_json(json_str))
                                     if isinstance(json_obj, dict):
-                                        json_objects.append(json_obj)
+                                        # 过滤掉空字典
+                                        if json_obj:
+                                            json_objects.append(json_obj)
                                     elif isinstance(json_obj, list):
                                         for item in json_obj:
-                                            if isinstance(item, dict):
+                                            if isinstance(item, dict) and item:
                                                 json_objects.append(item)
                                 except Exception as e:
                                     logger.debug(f"尝试解析不完整的JSON代码块失败: {e}")
