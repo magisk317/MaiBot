@@ -599,19 +599,16 @@ class TelemetryConfig(ConfigBase):
 
 @dataclass
 class WebUIConfig(ConfigBase):
-    """WebUI配置类"""
+    """WebUI配置类
+    
+    注意: host 和 port 配置已移至环境变量 WEBUI_HOST 和 WEBUI_PORT
+    """
 
     enabled: bool = True
     """是否启用WebUI"""
 
     mode: Literal["development", "production"] = "production"
     """运行模式：development(开发) 或 production(生产)"""
-
-    host: str = "0.0.0.0"
-    """WebUI服务器监听地址"""
-
-    port: int = 8001
-    """WebUI服务器端口"""
 
     anti_crawler_mode: Literal["false", "strict", "loose", "basic"] = "basic"
     """防爬虫模式：false(禁用) / strict(严格) / loose(宽松) / basic(基础-只记录不阻止)"""

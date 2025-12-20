@@ -186,7 +186,7 @@ class WebUIServer:
             error_msg = f"❌ WebUI 服务器启动失败: 端口 {self.port} 已被占用"
             logger.error(error_msg)
             logger.error(f"💡 请检查是否有其他程序正在使用端口 {self.port}")
-            logger.error("💡 可以在配置文件中修改 webui.port 来更改 WebUI 端口")
+            logger.error("💡 可以在 .env 文件中修改 WEBUI_PORT 来更改 WebUI 端口")
             logger.error(f"💡 Windows 用户可以运行: netstat -ano | findstr :{self.port}")
             logger.error(f"💡 Linux/Mac 用户可以运行: lsof -i :{self.port}")
             raise OSError(f"端口 {self.port} 已被占用，无法启动 WebUI 服务器")
@@ -224,7 +224,7 @@ class WebUIServer:
             if "address already in use" in str(e).lower() or e.errno in (98, 10048):  # 98: Linux, 10048: Windows
                 logger.error(f"❌ WebUI 服务器启动失败: 端口 {self.port} 已被占用")
                 logger.error(f"💡 请检查是否有其他程序正在使用端口 {self.port}")
-                logger.error("💡 可以在配置文件中修改 webui.port 来更改 WebUI 端口")
+                logger.error("💡 可以在 .env 文件中修改 WEBUI_PORT 来更改 WebUI 端口")
             else:
                 logger.error(f"❌ WebUI 服务器启动失败 (网络错误): {e}")
             raise
@@ -279,9 +279,9 @@ def get_webui_server() -> WebUIServer:
     """获取全局 WebUI 服务器实例"""
     global _webui_server
     if _webui_server is None:
-        # 从配置读取
-        from src.config.config import global_config
-        host = global_config.webui.host
-        port = global_config.webui.port
+        # 从环境变量读取
+        import os
+        host = os.getenv("WEBUI_HOST", "127.0.0.1")
+        port = int(os.getenv("WEBUI_PORT", "8001"))
         _webui_server = WebUIServer(host=host, port=port)
     return _webui_server

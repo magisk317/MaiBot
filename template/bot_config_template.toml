@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.4"
+version = "7.2.5"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 # 如果你想要修改配置文件，请递增version的值
@@ -267,13 +267,9 @@ api_server_allowed_api_keys = [] # 新版API Server允许的API Key列表，为�
 enable = true
 
 [webui] # WebUI 独立服务器配置
+# 注意: WebUI 的监听地址(host)和端口(port)已移至 .env 文件中的 WEBUI_HOST 和 WEBUI_PORT
 enabled = true # 是否启用WebUI
 mode = "production" # 模式: development(开发) 或 production(生产)
-host = "127.0.0.1" # WebUI 服务器监听地址
-                   # IPv4: 0.0.0.0 (所有IPv4接口) / 127.0.0.1 (仅本地)
-                   # IPv6: :: (所有接口，支持IPv4+IPv6双栈) / ::1 (仅本地IPv6)
-                   # 推荐使用 :: 实现双栈支持
-port = 8001 # WebUI 服务器端口
 
 # 防爬虫配置
 anti_crawler_mode = "basic" # 防爬虫模式: false(禁用) / strict(严格) / loose(宽松) / basic(基础-只记录不阻止)
