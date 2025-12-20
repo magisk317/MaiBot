@@ -677,9 +677,51 @@ class ActionPlanner:
             action.action_data = action.action_data or {}
             action.action_data["loop_start_time"] = loop_start_time
 
+        # 去重：如果同一个动作被选择了多次，随机选择其中一个
+        actions = self._deduplicate_actions(actions)
+
         logger.debug(f"{self.log_prefix}规划器选择了{len(actions)}个动作: {' '.join([a.action_type for a in actions])}")
 
         return extracted_reasoning, actions
+
+    def _deduplicate_actions(self, actions: List[ActionPlannerInfo]) -> List[ActionPlannerInfo]:
+        """
+        去重动作：如果同一个动作类型被选择了多次，随机选择其中一个
+        
+        Args:
+            actions: 动作列表
+            
+        Returns:
+            去重后的动作列表，保持原有顺序
+        """
+        if not actions:
+            return actions
+        
+        # 按 action_type 分组
+        action_groups: Dict[str, List[ActionPlannerInfo]] = {}
+        action_order: List[str] = []  # 保持第一次出现的顺序
+        
+        for action in actions:
+            action_type = action.action_type
+            if action_type not in action_groups:
+                action_groups[action_type] = []
+                action_order.append(action_type)
+            action_groups[action_type].append(action)
+        
+        # 对于每个动作类型，如果有多个，随机选择一个
+        deduplicated_actions = []
+        for action_type in action_order:
+            group = action_groups[action_type]
+            if len(group) > 1:
+                selected_action = random.choice(group)
+                logger.debug(
+                    f"{self.log_prefix}动作 '{action_type}' 被选择了{len(group)}次，随机选择了其中一个"
+                )
+                deduplicated_actions.append(selected_action)
+            else:
+                deduplicated_actions.append(group[0])
+        
+        return deduplicated_actions
 
     def _create_no_reply(self, reasoning: str, available_actions: Dict[str, ActionInfo]) -> List[ActionPlannerInfo]:
         """创建no_reply"""

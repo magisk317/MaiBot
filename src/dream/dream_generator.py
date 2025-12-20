@@ -216,7 +216,7 @@ async def generate_dream_summary(
                             # 默认为私聊会话
                             stream_id = get_chat_manager().get_stream_id(
                                 platform=platform,
-                                id_str=str(user_id),
+                                id=str(user_id),
                                 is_group=False,
                             )
                             if not stream_id:
