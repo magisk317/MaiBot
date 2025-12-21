@@ -272,7 +272,7 @@ enabled = true # 是否启用WebUI
 mode = "production" # 模式: development(开发) 或 production(生产)
 
 # 防爬虫配置
-anti_crawler_mode = "basic" # 防爬虫模式: false(禁用) / strict(严格) / loose(宽松) / basic(基础-只记录不阻止)
+anti_crawler_mode = "loose" # 防爬虫模式: false(禁用) / strict(严格) / loose(宽松) / basic(基础-只记录不阻止)
 allowed_ips = "127.0.0.1" # IP白名单（逗号分隔，支持精确IP、CIDR格式和通配符）
                           # 示例: 127.0.0.1,192.168.1.0/24,172.17.0.0/16
 trusted_proxies = "" # 信任的代理IP列表（逗号分隔），只有来自这些IP的X-Forwarded-For才被信任
