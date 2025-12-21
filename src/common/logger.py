@@ -20,6 +20,9 @@ PROJECT_ROOT = logger_file.parent.parent.parent.resolve()
 _file_handler = None
 _console_handler = None
 _ws_handler = None
+# 全局标志，防止重复初始化
+_logging_initialized = False
+_cleanup_task_started = False
 
 
 def get_file_handler():
@@ -869,29 +872,41 @@ def get_logger(name: Optional[str]) -> structlog.stdlib.BoundLogger:
     return logger
 
 
-def initialize_logging():
+def initialize_logging(verbose: bool = True):
     """手动初始化日志系统，确保所有logger都使用正确的配置
 
     在应用程序的早期调用此函数，确保所有模块都使用统一的日志配置
+    
+    Args:
+        verbose: 是否输出详细的初始化信息。默认为 True。
+                 在 Runner 进程中可以设置为 False 以避免重复的初始化日志。
     """
-    global LOG_CONFIG
+    global LOG_CONFIG, _logging_initialized
+    
+    # 防止重复初始化（在同一进程内）
+    if _logging_initialized:
+        return
+    
+    _logging_initialized = True
+    
     LOG_CONFIG = load_log_config()
     # print(LOG_CONFIG)
     configure_third_party_loggers()
     reconfigure_existing_loggers()
 
     # 启动日志清理任务
-    start_log_cleanup_task()
+    start_log_cleanup_task(verbose=verbose)
 
-    # 输出初始化信息
-    logger = get_logger("logger")
-    console_level = LOG_CONFIG.get("console_log_level", LOG_CONFIG.get("log_level", "INFO"))
-    file_level = LOG_CONFIG.get("file_log_level", LOG_CONFIG.get("log_level", "INFO"))
+    # 只在 verbose=True 时输出详细的初始化信息
+    if verbose:
+        logger = get_logger("logger")
+        console_level = LOG_CONFIG.get("console_log_level", LOG_CONFIG.get("log_level", "INFO"))
+        file_level = LOG_CONFIG.get("file_log_level", LOG_CONFIG.get("log_level", "INFO"))
 
-    logger.info("日志系统已初始化:")
-    logger.info(f"  - 控制台级别: {console_level}")
-    logger.info(f"  - 文件级别: {file_level}")
-    logger.info("  - 轮转份数: 30个文件|自动清理: 30天前的日志")
+        logger.info("日志系统已初始化:")
+        logger.info(f"  - 控制台级别: {console_level}")
+        logger.info(f"  - 文件级别: {file_level}")
+        logger.info("  - 轮转份数: 30个文件|自动清理: 30天前的日志")
 
 
 def cleanup_old_logs():
@@ -924,8 +939,19 @@ def cleanup_old_logs():
         logger.error(f"清理旧日志文件时出错: {e}")
 
 
-def start_log_cleanup_task():
-    """启动日志清理任务"""
+def start_log_cleanup_task(verbose: bool = True):
+    """启动日志清理任务
+    
+    Args:
+        verbose: 是否输出启动信息。默认为 True。
+    """
+    global _cleanup_task_started
+    
+    # 防止重复启动清理任务
+    if _cleanup_task_started:
+        return
+    
+    _cleanup_task_started = True
 
     def cleanup_task():
         while True:
@@ -935,8 +961,9 @@ def start_log_cleanup_task():
     cleanup_thread = threading.Thread(target=cleanup_task, daemon=True)
     cleanup_thread.start()
 
-    logger = get_logger("logger")
-    logger.info("已启动日志清理任务，将自动清理30天前的日志文件（轮转份数限制: 30个文件）")
+    if verbose:
+        logger = get_logger("logger")
+        logger.info("已启动日志清理任务，将自动清理30天前的日志文件（轮转份数限制: 30个文件）")
 
 
 def shutdown_logging():

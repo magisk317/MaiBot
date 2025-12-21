@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException, Header, Cookie
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, get_origin
 from pathlib import Path
 import json
 from src.common.logger import get_logger
 from src.common.toml_utils import save_toml_with_format
 from src.config.config import MMC_VERSION
+from src.plugin_system.base.config_types import ConfigField
 from .git_mirror_service import get_git_mirror_service, set_update_progress_callback
 from .token_manager import get_token_manager
 from .plugin_progress_ws import update_progress
@@ -31,6 +32,85 @@ def get_token_from_cookie_or_header(
     if authorization and authorization.startswith("Bearer "):
         return authorization.replace("Bearer ", "")
     return None
+
+
+def validate_safe_path(user_path: str, base_path: Path) -> Path:
+    """
+    验证用户提供的路径是否安全，防止路径遍历攻击
+
+    Args:
+        user_path: 用户输入的路径（相对路径）
+        base_path: 允许的基础目录
+
+    Returns:
+        安全的绝对路径
+
+    Raises:
+        HTTPException: 如果检测到路径遍历攻击
+    """
+    # 规范化基础路径
+    base_resolved = base_path.resolve()
+
+    # 检查用户路径是否包含可疑字符
+    # 禁止: .., 绝对路径开头, 空字节等
+    if any(pattern in user_path for pattern in ["..", "\x00"]):
+        logger.warning(f"检测到可疑路径: {user_path}")
+        raise HTTPException(status_code=400, detail="路径包含非法字符")
+
+    # 检查是否为绝对路径（Windows 和 Unix）
+    if user_path.startswith("/") or user_path.startswith("\\") or (len(user_path) > 1 and user_path[1] == ":"):
+        logger.warning(f"检测到绝对路径: {user_path}")
+        raise HTTPException(status_code=400, detail="不允许使用绝对路径")
+
+    # 构建目标路径并解析
+    target_path = (base_path / user_path).resolve()
+
+    # 验证解析后的路径仍在基础目录内
+    try:
+        target_path.relative_to(base_resolved)
+    except ValueError as e:
+        logger.warning(f"路径遍历攻击检测: {user_path} -> {target_path}")
+        raise HTTPException(status_code=400, detail="路径超出允许范围") from e
+
+    return target_path
+
+
+def validate_plugin_id(plugin_id: str) -> str:
+    """
+    验证插件 ID 格式是否安全
+
+    Args:
+        plugin_id: 插件 ID (支持 author.name 格式，允许中文)
+
+    Returns:
+        验证通过的插件 ID
+
+    Raises:
+        HTTPException: 如果插件 ID 格式不安全
+    """
+    # 禁止空字符串
+    if not plugin_id or not plugin_id.strip():
+        logger.warning("非法插件 ID: 空字符串")
+        raise HTTPException(status_code=400, detail="插件 ID 不能为空")
+
+    # 禁止危险字符: 路径分隔符、空字节、控制字符等
+    dangerous_patterns = ["/", "\\", "\x00", "..", "\n", "\r", "\t"]
+    for pattern in dangerous_patterns:
+        if pattern in plugin_id:
+            logger.warning(f"非法插件 ID 格式: {plugin_id} (包含危险字符)")
+            raise HTTPException(status_code=400, detail="插件 ID 包含非法字符")
+
+    # 禁止以点开头或结尾（防止隐藏文件和路径问题）
+    if plugin_id.startswith(".") or plugin_id.endswith("."):
+        logger.warning(f"非法插件 ID: {plugin_id}")
+        raise HTTPException(status_code=400, detail="插件 ID 不能以点开头或结尾")
+
+    # 禁止特殊名称
+    if plugin_id in (".", ".."):
+        logger.warning(f"非法插件 ID: {plugin_id}")
+        raise HTTPException(status_code=400, detail="插件 ID 不能为特殊目录名")
+
+    return plugin_id
 
 
 def parse_version(version_str: str) -> tuple[int, int, int]:
@@ -63,6 +143,95 @@ def parse_version(version_str: str) -> tuple[int, int, int]:
     except (ValueError, IndexError):
         logger.warning(f"无法解析版本号: {version_str}，返回默认值 (0, 0, 0)")
         return (0, 0, 0)
+
+
+# ============ 工具函数（避免在请求内重复定义） ============
+
+
+def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> None:
+    """深度合并两个字典，src 的值会覆盖或合并到 dst 中。"""
+    for k, v in src.items():
+        if k in dst and isinstance(dst[k], dict) and isinstance(v, dict):
+            _deep_merge(dst[k], v)
+        else:
+            dst[k] = v
+
+
+def normalize_dotted_keys(obj: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    将形如 {'a.b': 1} 的键展开为嵌套结构 {'a': {'b': 1}}。
+    若遇到中间节点已存在且非字典，记录日志并覆盖为字典。
+    """
+    result: Dict[str, Any] = {}
+    dotted_items = []
+
+    # 先处理非点号键，避免后续展开覆盖已有结构
+    for k, v in obj.items():
+        if "." in k:
+            dotted_items.append((k, v))
+        else:
+            result[k] = normalize_dotted_keys(v) if isinstance(v, dict) else v
+
+    # 再处理点号键
+    for dotted_key, v in dotted_items:
+        value = normalize_dotted_keys(v) if isinstance(v, dict) else v
+        parts = dotted_key.split(".")
+        if "" in parts:
+            logger.warning(f"键路径包含空段: '{dotted_key}'")
+            parts = [p for p in parts if p]
+        if not parts:
+            logger.warning(f"忽略空键路径: '{dotted_key}'")
+            continue
+        current = result
+        # 中间层
+        for idx, part in enumerate(parts[:-1]):
+            if part in current and not isinstance(current[part], dict):
+                path_ctx = ".".join(parts[: idx + 1])
+                logger.warning(f"键冲突：{part} 已存在且非字典，覆盖为字典以展开 {dotted_key} (路径 {path_ctx})")
+                current[part] = {}
+            current = current.setdefault(part, {})
+        # 最后一层
+        last_part = parts[-1]
+        if last_part in current and isinstance(current[last_part], dict) and isinstance(value, dict):
+            _deep_merge(current[last_part], value)
+        else:
+            current[last_part] = value
+
+    return result
+
+
+def coerce_types(schema_part: Dict[str, Any], config_part: Dict[str, Any]) -> None:
+    """
+    根据 schema 将配置中的类型纠正（目前只纠正 list-from-str）。
+    """
+
+    def _is_list_type(tp: Any) -> bool:
+        origin = get_origin(tp)
+        return tp is list or origin is list
+
+    for key, schema_val in schema_part.items():
+        if key not in config_part:
+            continue
+        value = config_part[key]
+        if isinstance(schema_val, ConfigField):
+            if _is_list_type(schema_val.type) and isinstance(value, str):
+                config_part[key] = [item.strip() for item in value.split(",") if item.strip()]
+        elif isinstance(schema_val, dict) and isinstance(value, dict):
+            coerce_types(schema_val, value)
+
+
+def find_plugin_instance(plugin_id: str) -> Optional[Any]:
+    """
+    按 plugin_id 或 plugin_name 查找已加载的插件实例。
+    局部导入 plugin_manager 以规避循环依赖。
+    """
+    from src.plugin_system.core.plugin_manager import plugin_manager
+
+    for loaded_plugin_name in plugin_manager.list_loaded_plugins():
+        instance = plugin_manager.get_plugin_instance(loaded_plugin_name)
+        if instance and (instance.plugin_name == plugin_id or instance.get_manifest_info("id", "") == plugin_id):
+            return instance
+    return None
 
 
 # ============ 请求/响应模型 ============
@@ -224,7 +393,9 @@ async def check_git_status() -> GitStatusResponse:
 
 
 @router.get("/mirrors", response_model=AvailableMirrorsResponse)
-async def get_available_mirrors(maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> AvailableMirrorsResponse:
+async def get_available_mirrors(
+    maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> AvailableMirrorsResponse:
     """
     获取所有可用的镜像源配置
     """
@@ -254,7 +425,9 @@ async def get_available_mirrors(maibot_session: Optional[str] = Cookie(None), au
 
 
 @router.post("/mirrors", response_model=MirrorConfigResponse)
-async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> MirrorConfigResponse:
+async def add_mirror(
+    request: AddMirrorRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> MirrorConfigResponse:
     """
     添加新的镜像源
     """
@@ -294,7 +467,10 @@ async def add_mirror(request: AddMirrorRequest, maibot_session: Optional[str] = 
 
 @router.put("/mirrors/{mirror_id}", response_model=MirrorConfigResponse)
 async def update_mirror(
-    mirror_id: str, request: UpdateMirrorRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+    mirror_id: str,
+    request: UpdateMirrorRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
 ) -> MirrorConfigResponse:
     """
     更新镜像源配置
@@ -337,7 +513,9 @@ async def update_mirror(
 
 
 @router.delete("/mirrors/{mirror_id}")
-async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def delete_mirror(
+    mirror_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
     """
     删除镜像源
     """
@@ -360,26 +538,24 @@ async def delete_mirror(mirror_id: str, maibot_session: Optional[str] = Cookie(N
 
 @router.post("/fetch-raw", response_model=FetchRawFileResponse)
 async def fetch_raw_file(
-    request: FetchRawFileRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+    request: FetchRawFileRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
 ) -> FetchRawFileResponse:
     """
     获取 GitHub 仓库的 Raw 文件内容
 
     支持多镜像源自动切换和错误重试
 
-    注意：此接口可公开访问，用于获取插件仓库等公开资源
+    需要认证才能访问，防止被滥用作为 SSRF 跳板
     """
-    # Token 验证（可选，用于日志记录）
+    # Token 验证（强制）
     token = get_token_from_cookie_or_header(maibot_session, authorization)
     token_manager = get_token_manager()
-    is_authenticated = token and token_manager.verify_token(token)
+    if not token or not token_manager.verify_token(token):
+        raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
 
-    # 对于公开仓库的访问，不强制要求认证
-    # 只在日志中记录是否认证
-    logger.info(
-        f"收到获取 Raw 文件请求 (认证: {is_authenticated}): "
-        f"{request.owner}/{request.repo}/{request.branch}/{request.file_path}"
-    )
+    logger.info(f"收到获取 Raw 文件请求: {request.owner}/{request.repo}/{request.branch}/{request.file_path}")
 
     # 发送开始加载进度
     await update_progress(
@@ -445,7 +621,9 @@ async def fetch_raw_file(
 
 @router.post("/clone", response_model=CloneRepositoryResponse)
 async def clone_repository(
-    request: CloneRepositoryRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+    request: CloneRepositoryRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
 ) -> CloneRepositoryResponse:
     """
     克隆 GitHub 仓库到本地
@@ -461,10 +639,10 @@ async def clone_repository(
     logger.info(f"收到克隆仓库请求: {request.owner}/{request.repo} -> {request.target_path}")
 
     try:
-        # TODO: 验证 target_path 的安全性，防止路径遍历攻击
-        # TODO: 确定实际的插件目录基路径
-        base_plugin_path = Path("./plugins")  # 临时路径
-        target_path = base_plugin_path / request.target_path
+        # 验证 target_path 的安全性，防止路径遍历攻击
+        base_plugin_path = Path("./plugins").resolve()
+        base_plugin_path.mkdir(exist_ok=True)
+        target_path = validate_safe_path(request.target_path, base_plugin_path)
 
         service = get_git_mirror_service()
         result = await service.clone_repository(
@@ -485,7 +663,11 @@ async def clone_repository(
 
 
 @router.post("/install")
-async def install_plugin(request: InstallPluginRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def install_plugin(
+    request: InstallPluginRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
     """
     安装插件
 
@@ -500,13 +682,16 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
     logger.info(f"收到安装插件请求: {request.plugin_id}")
 
     try:
+        # 验证插件 ID 格式安全性
+        plugin_id = validate_plugin_id(request.plugin_id)
+
         # 推送进度：开始安装
         await update_progress(
             stage="loading",
             progress=5,
-            message=f"开始安装插件: {request.plugin_id}",
+            message=f"开始安装插件: {plugin_id}",
             operation="install",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 1. 解析仓库 URL
@@ -527,27 +712,28 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
             progress=10,
             message=f"解析仓库信息: {owner}/{repo}",
             operation="install",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 2. 确定插件安装路径
-        plugins_dir = Path("plugins")
+        plugins_dir = Path("plugins").resolve()
         plugins_dir.mkdir(exist_ok=True)
 
         # 将插件 ID 中的点替换为下划线作为文件夹名称（避免文件系统问题）
         # 例如: SengokuCola.Mute-Plugin -> SengokuCola_Mute-Plugin
-        folder_name = request.plugin_id.replace(".", "_")
-        target_path = plugins_dir / folder_name
+        folder_name = plugin_id.replace(".", "_")
+        # 使用安全路径验证，防止路径遍历
+        target_path = validate_safe_path(folder_name, plugins_dir)
 
         # 检查插件是否已安装（需要检查两种格式：新格式下划线和旧格式点）
-        old_format_path = plugins_dir / request.plugin_id
+        old_format_path = plugins_dir / plugin_id
         if target_path.exists() or old_format_path.exists():
             await update_progress(
                 stage="error",
                 progress=0,
                 message="插件已存在",
                 operation="install",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
                 error="插件已安装，请先卸载",
             )
             raise HTTPException(status_code=400, detail="插件已安装")
@@ -557,7 +743,7 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
             progress=15,
             message=f"准备克隆到: {target_path}",
             operation="install",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 3. 克隆仓库（这里会自动推送 20%-80% 的进度）
@@ -586,14 +772,14 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
                 progress=0,
                 message="克隆仓库失败",
                 operation="install",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
                 error=error_msg,
             )
             raise HTTPException(status_code=500, detail=error_msg)
 
         # 4. 验证插件完整性
         await update_progress(
-            stage="loading", progress=85, message="验证插件文件...", operation="install", plugin_id=request.plugin_id
+            stage="loading", progress=85, message="验证插件文件...", operation="install", plugin_id=plugin_id
         )
 
         manifest_path = target_path / "_manifest.json"
@@ -608,14 +794,14 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
                 progress=0,
                 message="插件缺少 _manifest.json",
                 operation="install",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
                 error="无效的插件格式",
             )
             raise HTTPException(status_code=400, detail="无效的插件：缺少 _manifest.json")
 
         # 5. 读取并验证 manifest
         await update_progress(
-            stage="loading", progress=90, message="读取插件配置...", operation="install", plugin_id=request.plugin_id
+            stage="loading", progress=90, message="读取插件配置...", operation="install", plugin_id=plugin_id
         )
 
         try:
@@ -632,7 +818,7 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
 
             # 将插件 ID 写入 manifest（用于后续准确识别）
             # 这样即使文件夹名称改变，也能通过 manifest 准确识别插件
-            manifest["id"] = request.plugin_id
+            manifest["id"] = plugin_id
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json_module.dump(manifest, f, ensure_ascii=False, indent=2)
 
@@ -647,7 +833,7 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
                 progress=0,
                 message="_manifest.json 无效",
                 operation="install",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
                 error=str(e),
             )
             raise HTTPException(status_code=400, detail=f"无效的 _manifest.json: {e}") from e
@@ -658,13 +844,13 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
             progress=100,
             message=f"成功安装插件: {manifest['name']} v{manifest['version']}",
             operation="install",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         return {
             "success": True,
             "message": "插件安装成功",
-            "plugin_id": request.plugin_id,
+            "plugin_id": plugin_id,
             "plugin_name": manifest["name"],
             "version": manifest["version"],
             "path": str(target_path),
@@ -680,7 +866,7 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
             progress=0,
             message="安装失败",
             operation="install",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
             error=str(e),
         )
 
@@ -689,7 +875,9 @@ async def install_plugin(request: InstallPluginRequest, maibot_session: Optional
 
 @router.post("/uninstall")
 async def uninstall_plugin(
-    request: UninstallPluginRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+    request: UninstallPluginRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     """
     卸载插件
@@ -705,22 +893,26 @@ async def uninstall_plugin(
     logger.info(f"收到卸载插件请求: {request.plugin_id}")
 
     try:
+        # 验证插件 ID 格式安全性
+        plugin_id = validate_plugin_id(request.plugin_id)
+
         # 推送进度：开始卸载
         await update_progress(
             stage="loading",
             progress=10,
-            message=f"开始卸载插件: {request.plugin_id}",
+            message=f"开始卸载插件: {plugin_id}",
             operation="uninstall",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 1. 检查插件是否存在（支持新旧两种格式）
-        plugins_dir = Path("plugins")
+        plugins_dir = Path("plugins").resolve()
         # 新格式：下划线
-        folder_name = request.plugin_id.replace(".", "_")
-        plugin_path = plugins_dir / folder_name
+        folder_name = plugin_id.replace(".", "_")
+        # 使用安全路径验证
+        plugin_path = validate_safe_path(folder_name, plugins_dir)
         # 旧格式：点
-        old_format_path = plugins_dir / request.plugin_id
+        old_format_path = validate_safe_path(plugin_id, plugins_dir)
 
         # 优先使用新格式，如果不存在则尝试旧格式
         if not plugin_path.exists():
@@ -732,7 +924,7 @@ async def uninstall_plugin(
                     progress=0,
                     message="插件不存在",
                     operation="uninstall",
-                    plugin_id=request.plugin_id,
+                    plugin_id=plugin_id,
                     error="插件未安装或已被删除",
                 )
                 raise HTTPException(status_code=404, detail="插件未安装")
@@ -742,12 +934,12 @@ async def uninstall_plugin(
             progress=30,
             message=f"正在删除插件文件: {plugin_path}",
             operation="uninstall",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 2. 读取插件信息（用于日志）
         manifest_path = plugin_path / "_manifest.json"
-        plugin_name = request.plugin_id
+        plugin_name = plugin_id
 
         if manifest_path.exists():
             try:
@@ -755,7 +947,7 @@ async def uninstall_plugin(
 
                 with open(manifest_path, "r", encoding="utf-8") as f:
                     manifest = json_module.load(f)
-                plugin_name = manifest.get("name", request.plugin_id)
+                plugin_name = manifest.get("name", plugin_id)
             except Exception:
                 pass  # 如果读取失败，使用插件 ID 作为名称
 
@@ -764,7 +956,7 @@ async def uninstall_plugin(
             progress=50,
             message=f"正在删除 {plugin_name}...",
             operation="uninstall",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 3. 删除插件目录
@@ -780,7 +972,7 @@ async def uninstall_plugin(
 
         shutil.rmtree(plugin_path, onerror=remove_readonly)
 
-        logger.info(f"成功卸载插件: {request.plugin_id} ({plugin_name})")
+        logger.info(f"成功卸载插件: {plugin_id} ({plugin_name})")
 
         # 4. 推送成功状态
         await update_progress(
@@ -788,10 +980,10 @@ async def uninstall_plugin(
             progress=100,
             message=f"成功卸载插件: {plugin_name}",
             operation="uninstall",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
-        return {"success": True, "message": "插件卸载成功", "plugin_id": request.plugin_id, "plugin_name": plugin_name}
+        return {"success": True, "message": "插件卸载成功", "plugin_id": plugin_id, "plugin_name": plugin_name}
 
     except HTTPException:
         raise
@@ -803,7 +995,7 @@ async def uninstall_plugin(
             progress=0,
             message="卸载失败",
             operation="uninstall",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
             error="权限不足，无法删除插件文件",
         )
 
@@ -816,7 +1008,7 @@ async def uninstall_plugin(
             progress=0,
             message="卸载失败",
             operation="uninstall",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
             error=str(e),
         )
 
@@ -824,7 +1016,11 @@ async def uninstall_plugin(
 
 
 @router.post("/update")
-async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def update_plugin(
+    request: UpdatePluginRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
     """
     更新插件
 
@@ -839,22 +1035,26 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
     logger.info(f"收到更新插件请求: {request.plugin_id}")
 
     try:
+        # 验证插件 ID 格式安全性
+        plugin_id = validate_plugin_id(request.plugin_id)
+
         # 推送进度：开始更新
         await update_progress(
             stage="loading",
             progress=5,
-            message=f"开始更新插件: {request.plugin_id}",
+            message=f"开始更新插件: {plugin_id}",
             operation="update",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 1. 检查插件是否已安装（支持新旧两种格式）
-        plugins_dir = Path("plugins")
+        plugins_dir = Path("plugins").resolve()
         # 新格式：下划线
-        folder_name = request.plugin_id.replace(".", "_")
-        plugin_path = plugins_dir / folder_name
+        folder_name = plugin_id.replace(".", "_")
+        # 使用安全路径验证
+        plugin_path = validate_safe_path(folder_name, plugins_dir)
         # 旧格式：点
-        old_format_path = plugins_dir / request.plugin_id
+        old_format_path = validate_safe_path(plugin_id, plugins_dir)
 
         # 优先使用新格式，如果不存在则尝试旧格式
         if not plugin_path.exists():
@@ -866,7 +1066,7 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
                     progress=0,
                     message="插件不存在",
                     operation="update",
-                    plugin_id=request.plugin_id,
+                    plugin_id=plugin_id,
                     error="插件未安装，请先安装",
                 )
                 raise HTTPException(status_code=404, detail="插件未安装")
@@ -890,12 +1090,12 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
             progress=10,
             message=f"当前版本: {old_version}，准备更新...",
             operation="update",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         # 3. 删除旧版本
         await update_progress(
-            stage="loading", progress=20, message="正在删除旧版本...", operation="update", plugin_id=request.plugin_id
+            stage="loading", progress=20, message="正在删除旧版本...", operation="update", plugin_id=plugin_id
         )
 
         import shutil
@@ -910,7 +1110,7 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
 
         shutil.rmtree(plugin_path, onerror=remove_readonly)
 
-        logger.info(f"已删除旧版本: {request.plugin_id} v{old_version}")
+        logger.info(f"已删除旧版本: {plugin_id} v{old_version}")
 
         # 4. 解析仓库 URL
         await update_progress(
@@ -918,7 +1118,7 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
             progress=30,
             message="正在准备下载新版本...",
             operation="update",
-            plugin_id=request.plugin_id,
+            plugin_id=plugin_id,
         )
 
         repo_url = request.repository_url.rstrip("/")
@@ -956,14 +1156,14 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
                 progress=0,
                 message="下载新版本失败",
                 operation="update",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
                 error=error_msg,
             )
             raise HTTPException(status_code=500, detail=error_msg)
 
         # 6. 验证新版本
         await update_progress(
-            stage="loading", progress=90, message="验证新版本...", operation="update", plugin_id=request.plugin_id
+            stage="loading", progress=90, message="验证新版本...", operation="update", plugin_id=plugin_id
         )
 
         new_manifest_path = plugin_path / "_manifest.json"
@@ -983,7 +1183,7 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
                 progress=0,
                 message="新版本缺少 _manifest.json",
                 operation="update",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
                 error="无效的插件格式",
             )
             raise HTTPException(status_code=400, detail="无效的插件：缺少 _manifest.json")
@@ -994,9 +1194,9 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
                 new_manifest = json_module.load(f)
 
             new_version = new_manifest.get("version", "unknown")
-            new_name = new_manifest.get("name", request.plugin_id)
+            new_name = new_manifest.get("name", plugin_id)
 
-            logger.info(f"成功更新插件: {request.plugin_id} {old_version} → {new_version}")
+            logger.info(f"成功更新插件: {plugin_id} {old_version} → {new_version}")
 
             # 8. 推送成功状态
             await update_progress(
@@ -1004,13 +1204,13 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
                 progress=100,
                 message=f"成功更新 {new_name}: {old_version} → {new_version}",
                 operation="update",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
             )
 
             return {
                 "success": True,
                 "message": "插件更新成功",
-                "plugin_id": request.plugin_id,
+                "plugin_id": plugin_id,
                 "plugin_name": new_name,
                 "old_version": old_version,
                 "new_version": new_version,
@@ -1025,7 +1225,7 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
                 progress=0,
                 message="_manifest.json 无效",
                 operation="update",
-                plugin_id=request.plugin_id,
+                plugin_id=plugin_id,
                 error=str(e),
             )
             raise HTTPException(status_code=400, detail=f"无效的 _manifest.json: {e}") from e
@@ -1036,14 +1236,16 @@ async def update_plugin(request: UpdatePluginRequest, maibot_session: Optional[s
         logger.error(f"更新插件失败: {e}", exc_info=True)
 
         await update_progress(
-            stage="error", progress=0, message="更新失败", operation="update", plugin_id=request.plugin_id, error=str(e)
+            stage="error", progress=0, message="更新失败", operation="update", plugin_id=plugin_id, error=str(e)
         )
 
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
 
 
 @router.get("/installed")
-async def get_installed_plugins(maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def get_installed_plugins(
+    maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
     """
     获取已安装的插件列表
 
@@ -1158,15 +1360,37 @@ async def get_installed_plugins(maibot_session: Optional[str] = Cookie(None), au
                 )
 
             except json.JSONDecodeError as e:
-                logger.warning(f"插件 {plugin_id} 的 _manifest.json 解析失败: {e}")
+                logger.warning(f"插件 {folder_name} 的 _manifest.json 解析失败: {e}")
                 continue
             except Exception as e:
-                logger.error(f"读取插件 {plugin_id} 信息时出错: {e}")
+                logger.error(f"读取插件 {folder_name} 信息时出错: {e}")
                 continue
 
-        logger.info(f"找到 {len(installed_plugins)} 个已安装插件")
+        # 去重：如果有重复的 plugin_id，只保留第一个（按路径）
+        seen_ids = {}  # 记录 ID -> 路径的映射
+        unique_plugins = []
+        duplicates = []
+        
+        for plugin in installed_plugins:
+            plugin_id = plugin["id"]
+            plugin_path = plugin["path"]
+            
+            if plugin_id not in seen_ids:
+                seen_ids[plugin_id] = plugin_path
+                unique_plugins.append(plugin)
+            else:
+                duplicates.append(plugin)
+                first_path = seen_ids[plugin_id]
+                logger.warning(
+                    f"重复插件 {plugin_id}: 保留 {first_path}, 跳过 {plugin_path}"
+                )
+        
+        if duplicates:
+            logger.warning(f"共检测到 {len(duplicates)} 个重复插件已去重")
 
-        return {"success": True, "plugins": installed_plugins, "total": len(installed_plugins)}
+        logger.info(f"找到 {len(unique_plugins)} 个已安装插件")
+
+        return {"success": True, "plugins": unique_plugins, "total": len(unique_plugins)}
 
     except Exception as e:
         logger.error(f"获取已安装插件列表失败: {e}", exc_info=True)
@@ -1183,7 +1407,9 @@ class UpdatePluginConfigRequest(BaseModel):
 
 
 @router.get("/config/{plugin_id}/schema")
-async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def get_plugin_config_schema(
+    plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
     """
     获取插件配置 Schema
 
@@ -1284,12 +1510,34 @@ async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str]
                     # 推断字段类型
                     field_type = type(field_value).__name__
                     ui_type = "text"
+                    item_type = None
+                    item_fields = None
+
                     if isinstance(field_value, bool):
                         ui_type = "switch"
                     elif isinstance(field_value, (int, float)):
                         ui_type = "number"
                     elif isinstance(field_value, list):
                         ui_type = "list"
+                        # 推断数组元素类型
+                        if field_value:
+                            first_item = field_value[0]
+                            if isinstance(first_item, dict):
+                                item_type = "object"
+                                # 从第一个元素推断字段结构
+                                item_fields = {}
+                                for k, v in first_item.items():
+                                    item_fields[k] = {
+                                        "type": "number" if isinstance(v, (int, float)) else "string",
+                                        "label": k,
+                                        "default": "" if isinstance(v, str) else 0,
+                                    }
+                            elif isinstance(first_item, (int, float)):
+                                item_type = "number"
+                            else:
+                                item_type = "string"
+                        else:
+                            item_type = "string"
                     elif isinstance(field_value, dict):
                         ui_type = "json"
 
@@ -1304,6 +1552,26 @@ async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str]
                         "hidden": False,
                         "disabled": False,
                         "order": 0,
+                        "item_type": item_type,
+                        "item_fields": item_fields,
+                        "min_items": None,
+                        "max_items": None,
+                        # 补充缺失的字段
+                        "placeholder": None,
+                        "hint": None,
+                        "icon": None,
+                        "example": None,
+                        "choices": None,
+                        "min": None,
+                        "max": None,
+                        "step": None,
+                        "pattern": None,
+                        "max_length": None,
+                        "input_type": None,
+                        "rows": 3,
+                        "group": None,
+                        "depends_on": None,
+                        "depends_value": None,
                     }
 
         return {"success": True, "schema": schema}
@@ -1315,8 +1583,144 @@ async def get_plugin_config_schema(plugin_id: str, maibot_session: Optional[str]
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
 
 
+@router.get("/config/{plugin_id}/raw")
+async def get_plugin_config_raw(
+    plugin_id: str,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """
+    获取插件原始 TOML 配置文件内容
+    """
+    # Token 验证
+    token = get_token_from_cookie_or_header(maibot_session, authorization)
+    token_manager = get_token_manager()
+    if not token or not token_manager.verify_token(token):
+        raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
+
+    logger.info(f"获取插件原始配置: {plugin_id}")
+
+    try:
+        # 查找插件目录
+        plugins_dir = Path("plugins")
+        plugin_path = None
+
+        for p in plugins_dir.iterdir():
+            if p.is_dir():
+                manifest_path = p / "_manifest.json"
+                if manifest_path.exists():
+                    try:
+                        with open(manifest_path, "r", encoding="utf-8") as f:
+                            manifest = json.load(f)
+                        if manifest.get("id") == plugin_id or p.name == plugin_id:
+                            plugin_path = p
+                            break
+                    except Exception:
+                        continue
+
+        if not plugin_path:
+            raise HTTPException(status_code=404, detail=f"未找到插件: {plugin_id}")
+
+        # 读取配置文件
+        config_path = plugin_path / "config.toml"
+        if not config_path.exists():
+            return {"success": True, "config": "", "message": "配置文件不存在"}
+
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_content = f.read()
+
+        return {"success": True, "config": config_content}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取插件原始配置失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
+
+
+@router.put("/config/{plugin_id}/raw")
+async def update_plugin_config_raw(
+    plugin_id: str,
+    request: UpdatePluginConfigRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """
+    更新插件原始 TOML 配置文件
+
+    直接保存 TOML 字符串到配置文件。
+    """
+    # Token 验证
+    token = get_token_from_cookie_or_header(maibot_session, authorization)
+    token_manager = get_token_manager()
+    if not token or not token_manager.verify_token(token):
+        raise HTTPException(status_code=401, detail="未授权：无效的访问令牌")
+
+    logger.info(f"更新插件原始配置: {plugin_id}")
+
+    try:
+        # 查找插件目录
+        plugins_dir = Path("plugins")
+        plugin_path = None
+
+        for p in plugins_dir.iterdir():
+            if p.is_dir():
+                manifest_path = p / "_manifest.json"
+                if manifest_path.exists():
+                    try:
+                        with open(manifest_path, "r", encoding="utf-8") as f:
+                            manifest = json.load(f)
+                        if manifest.get("id") == plugin_id or p.name == plugin_id:
+                            plugin_path = p
+                            break
+                    except Exception:
+                        continue
+
+        if not plugin_path:
+            raise HTTPException(status_code=404, detail=f"未找到插件: {plugin_id}")
+
+        config_path = plugin_path / "config.toml"
+
+        # 验证 TOML 格式
+        import tomlkit
+        
+        if not isinstance(request.config, str):
+            raise HTTPException(status_code=400, detail="配置必须是字符串格式的 TOML 内容")
+        
+        try:
+            tomlkit.loads(request.config)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"TOML 格式错误: {str(e)}")
+
+        # 备份旧配置
+        import shutil
+        import datetime
+
+        if config_path.exists():
+            backup_name = f"config.toml.backup.{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+            backup_path = plugin_path / backup_name
+            shutil.copy(config_path, backup_path)
+            logger.info(f"已备份配置文件: {backup_path}")
+
+        # 写入新配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(request.config)
+
+        logger.info(f"已更新插件原始配置: {plugin_id}")
+
+        return {"success": True, "message": "配置已保存", "note": "配置更改将在插件重新加载后生效"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新插件原始配置失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}") from e
+
+
 @router.get("/config/{plugin_id}")
-async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def get_plugin_config(
+    plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
     """
     获取插件当前配置值
 
@@ -1372,7 +1776,10 @@ async def get_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cook
 
 @router.put("/config/{plugin_id}")
 async def update_plugin_config(
-    plugin_id: str, request: UpdatePluginConfigRequest, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+    plugin_id: str,
+    request: UpdatePluginConfigRequest,
+    maibot_session: Optional[str] = Cookie(None),
+    authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     """
     更新插件配置
@@ -1388,6 +1795,14 @@ async def update_plugin_config(
     logger.info(f"更新插件配置: {plugin_id}")
 
     try:
+        plugin_instance = find_plugin_instance(plugin_id)
+
+        # 纠正 WebUI 提交的数据结构（扁平键与字符串列表）
+        if plugin_instance and isinstance(request.config, dict):
+            request.config = normalize_dotted_keys(request.config)
+            if isinstance(plugin_instance.config_schema, dict):
+                coerce_types(plugin_instance.config_schema, request.config)
+
         # 查找插件目录
         plugins_dir = Path("plugins")
         plugin_path = None
@@ -1420,18 +1835,8 @@ async def update_plugin_config(
             shutil.copy(config_path, backup_path)
             logger.info(f"已备份配置文件: {backup_path}")
 
-        # 写入新配置（使用 tomlkit 保留注释）
-        import tomlkit
-
-        # 先读取原配置以保留注释和格式
-        existing_doc = tomlkit.document()
-        if config_path.exists():
-            with open(config_path, "r", encoding="utf-8") as f:
-                existing_doc = tomlkit.load(f)
-        # 更新值
-        for key, value in request.config.items():
-            existing_doc[key] = value
-        save_toml_with_format(existing_doc, str(config_path))
+        # 写入新配置（自动保留注释和格式）
+        save_toml_with_format(request.config, str(config_path))
 
         logger.info(f"已更新插件配置: {plugin_id}")
 
@@ -1445,7 +1850,9 @@ async def update_plugin_config(
 
 
 @router.post("/config/{plugin_id}/reset")
-async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def reset_plugin_config(
+    plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
     """
     重置插件配置为默认值
 
@@ -1505,7 +1912,9 @@ async def reset_plugin_config(plugin_id: str, maibot_session: Optional[str] = Co
 
 
 @router.post("/config/{plugin_id}/toggle")
-async def toggle_plugin(plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+async def toggle_plugin(
+    plugin_id: str, maibot_session: Optional[str] = Cookie(None), authorization: Optional[str] = Header(None)
+) -> Dict[str, Any]:
     """
     切换插件启用状态
 

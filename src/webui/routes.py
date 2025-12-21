@@ -1,11 +1,12 @@
 """WebUI API 路由"""
 
-from fastapi import APIRouter, HTTPException, Header, Response, Request, Cookie
+from fastapi import APIRouter, HTTPException, Header, Response, Request, Cookie, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 from src.common.logger import get_logger
 from .token_manager import get_token_manager
 from .auth import set_auth_cookie, clear_auth_cookie
+from .rate_limiter import get_rate_limiter, check_auth_rate_limit
 from .config_routes import router as config_router
 from .statistics_routes import router as statistics_router
 from .person_routes import router as person_router
@@ -16,6 +17,7 @@ from .plugin_routes import router as plugin_router
 from .plugin_progress_ws import get_progress_router
 from .routers.system import router as system_router
 from .model_routes import router as model_router
+from .ws_auth import router as ws_auth_router
 
 logger = get_logger("webui.api")
 
@@ -42,6 +44,8 @@ router.include_router(get_progress_router())
 router.include_router(system_router)
 # 注册模型列表获取路由
 router.include_router(model_router)
+# 注册 WebSocket 认证路由
+router.include_router(ws_auth_router)
 
 
 class TokenVerifyRequest(BaseModel):
@@ -107,12 +111,18 @@ async def health_check():
 
 
 @router.post("/auth/verify", response_model=TokenVerifyResponse)
-async def verify_token(request: TokenVerifyRequest, response: Response):
+async def verify_token(
+    request_body: TokenVerifyRequest,
+    request: Request,
+    response: Response,
+    _rate_limit: None = Depends(check_auth_rate_limit),
+):
     """
     验证访问令牌，验证成功后设置 HttpOnly Cookie
 
     Args:
-        request: 包含 token 的验证请求
+        request_body: 包含 token 的验证请求
+        request: FastAPI Request 对象（用于获取客户端 IP）
         response: FastAPI Response 对象
 
     Returns:
@@ -120,16 +130,37 @@ async def verify_token(request: TokenVerifyRequest, response: Response):
     """
     try:
         token_manager = get_token_manager()
-        is_valid = token_manager.verify_token(request.token)
+        rate_limiter = get_rate_limiter()
+
+        is_valid = token_manager.verify_token(request_body.token)
 
         if is_valid:
-            # 设置 HttpOnly Cookie
-            set_auth_cookie(response, request.token)
+            # 认证成功，重置失败计数
+            rate_limiter.reset_failures(request)
+            # 设置 HttpOnly Cookie（传入 request 以检测协议）
+            set_auth_cookie(response, request_body.token, request)
             # 同时返回首次配置状态，避免额外请求
             is_first_setup = token_manager.is_first_setup()
             return TokenVerifyResponse(valid=True, message="Token 验证成功", is_first_setup=is_first_setup)
         else:
-            return TokenVerifyResponse(valid=False, message="Token 无效或已过期")
+            # 记录失败尝试
+            blocked, remaining = rate_limiter.record_failed_attempt(
+                request,
+                max_failures=5,  # 5 次失败
+                window_seconds=300,  # 5 分钟窗口
+                block_duration=600,  # 封禁 10 分钟
+            )
+
+            if blocked:
+                raise HTTPException(status_code=429, detail="认证失败次数过多，您的 IP 已被临时封禁 10 分钟")
+
+            message = "Token 无效或已过期"
+            if remaining <= 2:
+                message += f"（剩余 {remaining} 次尝试机会）"
+
+            return TokenVerifyResponse(valid=False, message=message)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Token 验证失败: {e}")
         raise HTTPException(status_code=500, detail="Token 验证失败") from e
@@ -139,10 +170,10 @@ async def verify_token(request: TokenVerifyRequest, response: Response):
 async def logout(response: Response):
     """
     登出并清除认证 Cookie
-    
+
     Args:
         response: FastAPI Response 对象
-    
+
     Returns:
         登出结果
     """
@@ -158,29 +189,39 @@ async def check_auth_status(
 ):
     """
     检查当前认证状态（用于前端判断是否已登录）
-    
+
     Returns:
         认证状态
     """
     try:
         token = None
         
+        # 记录请求信息用于调试
+        logger.debug(f"检查认证状态 - Cookie: {maibot_session[:20] if maibot_session else 'None'}..., Authorization: {'Present' if authorization else 'None'}")
+
         # 优先从 Cookie 获取
         if maibot_session:
             token = maibot_session
+            logger.debug("使用 Cookie 中的 token")
         # 其次从 Header 获取
         elif authorization and authorization.startswith("Bearer "):
             token = authorization.replace("Bearer ", "")
-        
+            logger.debug("使用 Header 中的 token")
+
         if not token:
+            logger.debug("未找到 token，返回未认证")
             return {"authenticated": False}
-        
+
         token_manager = get_token_manager()
-        if token_manager.verify_token(token):
+        is_valid = token_manager.verify_token(token)
+        logger.debug(f"Token 验证结果: {is_valid}")
+        
+        if is_valid:
             return {"authenticated": True}
         else:
             return {"authenticated": False}
-    except Exception:
+    except Exception as e:
+        logger.error(f"认证检查失败: {e}", exc_info=True)
         return {"authenticated": False}
 
 
@@ -211,7 +252,7 @@ async def update_token(
             current_token = maibot_session
         elif authorization and authorization.startswith("Bearer "):
             current_token = authorization.replace("Bearer ", "")
-        
+
         if not current_token:
             raise HTTPException(status_code=401, detail="未提供有效的认证信息")
 
@@ -222,10 +263,10 @@ async def update_token(
 
         # 更新 token
         success, message = token_manager.update_token(request.new_token)
-        
-        # 如果更新成功，更新 Cookie
+
+        # 如果更新成功，清除 Cookie，要求用户重新登录
         if success:
-            set_auth_cookie(response, request.new_token)
+            clear_auth_cookie(response)
 
         return TokenUpdateResponse(success=success, message=message)
     except HTTPException:
@@ -263,7 +304,7 @@ async def regenerate_token(
 
         if not current_token:
             raise HTTPException(status_code=401, detail="未提供有效的认证信息")
-            
+
         token_manager = get_token_manager()
 
         if not token_manager.verify_token(current_token):
@@ -271,9 +312,9 @@ async def regenerate_token(
 
         # 重新生成 token
         new_token = token_manager.regenerate_token()
-        
-        # 更新 Cookie
-        set_auth_cookie(response, new_token)
+
+        # 清除 Cookie，要求用户重新登录
+        clear_auth_cookie(response)
 
         return TokenRegenerateResponse(success=True, token=new_token, message="Token 已重新生成")
     except HTTPException:
@@ -306,7 +347,7 @@ async def get_setup_status(
             current_token = maibot_session
         elif authorization and authorization.startswith("Bearer "):
             current_token = authorization.replace("Bearer ", "")
-        
+
         if not current_token:
             raise HTTPException(status_code=401, detail="未提供有效的认证信息")
 
@@ -349,7 +390,7 @@ async def complete_setup(
             current_token = maibot_session
         elif authorization and authorization.startswith("Bearer "):
             current_token = authorization.replace("Bearer ", "")
-        
+
         if not current_token:
             raise HTTPException(status_code=401, detail="未提供有效的认证信息")
 
@@ -392,7 +433,7 @@ async def reset_setup(
             current_token = maibot_session
         elif authorization and authorization.startswith("Bearer "):
             current_token = authorization.replace("Bearer ", "")
-        
+
         if not current_token:
             raise HTTPException(status_code=401, detail="未提供有效的认证信息")
 
