@@ -344,7 +344,7 @@ class ExpressionLearner:
                 logger.error(f"修复中文引号后仍失败，错误: {type(fix_error).__name__}: {str(fix_error)}")
                 logger.error(f"解析表达风格 JSON 失败，原始响应：{response}")
                 logger.error(f"处理后的 JSON 字符串（前500字符）：{raw[:500]}")
-                return []
+                return [], []
 
         if isinstance(parsed, dict):
             parsed_list = [parsed]
@@ -352,7 +352,7 @@ class ExpressionLearner:
             parsed_list = parsed
         else:
             logger.error(f"表达风格解析结果类型异常: {type(parsed)}, 内容: {parsed}")
-            return []
+            return [], []
 
         for item in parsed_list:
             if not isinstance(item, dict):
