@@ -35,20 +35,20 @@ spec:
               value: {{ .Values.config.core_model_config | b64enc | quote }}
             {{- end }}
           volumeMounts:
-            - mountPath: /app/config/adapter/config.toml
+            - mountPath: /app/config/adapter
               name: adapter-config
-              subPath: config.toml
-            - mountPath: /app/config/core/.env
+            - mountPath: /app/config/core
               name: core-config
-              subPath: .env
-            - mountPath: /app/config/core/bot_config.toml
-              name: core-config
-              subPath: bot_config.toml
-            - mountPath: /app/config/core/model_config.toml
-              name: core-config
-              subPath: model_config.toml
       imagePullSecrets:
         {{ toYaml .Values.pre_processor.image.pullSecrets | nindent 8 }}
+      {{- if .Values.pre_processor.nodeSelector }}
+      nodeSelector:
+        {{ toYaml .Values.pre_processor.nodeSelector | nindent 8 }}
+      {{- end }}
+      {{- if .Values.pre_processor.tolerations }}
+      tolerations:
+        {{ toYaml .Values.pre_processor.tolerations | nindent 8 }}
+      {{- end }}
       volumes:
         - name: adapter-config
           persistentVolumeClaim:

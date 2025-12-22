@@ -13,6 +13,9 @@ pre_processor:
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
+  nodeSelector: { }
+  tolerations: [ ]
+
 # 麦麦Adapter的部署配置
 adapter:
 
