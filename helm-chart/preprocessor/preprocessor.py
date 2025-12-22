@@ -122,7 +122,7 @@ def write_config_files():
     """当注入了配置文件时（一般是首次安装或者用户指定覆盖），将helm chart注入的配置写入存储卷中的实际文件"""
     func_name = 'write_config_files'
     log(func_name, 'Detecting config files...')
-    if config_adapter_b64.strip():
+    if config_adapter_b64:
         log(func_name, '\tWriting `config.toml` of adapter...')
         config_str = base64.b64decode(config_adapter_b64).decode("utf-8")
         with open('/app/config/adapter/config.toml', 'w', encoding='utf-8') as _f:
@@ -134,13 +134,13 @@ def write_config_files():
         with open('/app/config/core/.env', 'w', encoding='utf-8') as _f:
             _f.write(config_str)
         log(func_name, '\t`.env` of core wrote.')
-    if config_core_bot_b64.strip():
+    if config_core_bot_b64:
         log(func_name, '\tWriting `bot_config.toml` of core not found. Creating...')
         config_str = base64.b64decode(config_core_bot_b64).decode("utf-8")
         with open('/app/config/core/bot_config.toml', 'w', encoding='utf-8') as _f:
             _f.write(config_str)
         log(func_name, '\t`bot_config.toml` of core wrote.')
-    if config_core_model_b64.strip():
+    if config_core_model_b64:
         log(func_name, '\tWriting `model_config.toml` of core...')
         config_str = base64.b64decode(config_core_model_b64).decode("utf-8")
         with open('/app/config/core/model_config.toml', 'w', encoding='utf-8') as _f:
