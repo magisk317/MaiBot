@@ -9,6 +9,7 @@
 """
 
 import traceback
+import time
 from typing import Tuple, Any, Dict, List, Optional, TYPE_CHECKING
 from rich.traceback import install
 from src.common.logger import get_logger
@@ -118,6 +119,10 @@ async def generate_reply(
         Tuple[bool, List[Tuple[str, Any]], Optional[str]]: (是否成功, 回复集合, 提示词)
     """
     try:
+        # 如果 reply_time_point 未传入，设置为当前时间戳
+        if reply_time_point is None:
+            reply_time_point = time.time()
+        
         # 获取回复器
         logger.debug("[GeneratorAPI] 开始生成回复")
         replyer = get_replyer(chat_stream, chat_id, request_type=request_type)
@@ -152,7 +157,7 @@ async def generate_reply(
             enable_tool=enable_tool,
             reply_message=reply_message,
             reply_reason=reply_reason,
-             unknown_words=unknown_words,
+            unknown_words=unknown_words,
             think_level=think_level,
             from_plugin=from_plugin,
             stream_id=chat_stream.stream_id if chat_stream else chat_id,
