@@ -25,7 +25,7 @@ spec:
               value: {{ .Values.config.adapter_config | b64enc | quote }}
             {{- end }}
             - name: CONFIG_CORE_ENV_B64
-              value: {{ tpl .Files.Get "files/.env" . | b64enc | quote }}
+              value: {{ tpl (.Files.Get "files/.env") . | b64enc | quote }}
             {{- if or .Values.config.override_core_bot_config .Release.IsInstall }}
             - name: CONFIG_CORE_BOT_B64
               value: {{ .Values.config.core_bot_config | b64enc | quote }}
