@@ -34,35 +34,39 @@ helm install maimai \
 
 1. `EULA` & `PRIVACY`: 用户必须同意这里的协议才能成功部署麦麦。
 
-2. `adapter`: 麦麦的Adapter的部署配置。
+2. `pre_processor`: 部署之前的预处理Job的配置。
 
-3. `core`: 麦麦本体的部署配置。
+3. `adapter`: 麦麦的Adapter的部署配置。
 
-4. `statistics_dashboard`: 麦麦的运行统计看板部署配置。
+4. `core`: 麦麦本体的部署配置。
+
+5. `statistics_dashboard`: 麦麦的运行统计看板部署配置。
 
    麦麦每隔一段时间会自动输出html格式的运行统计报告，此统计报告可以部署为看板。
 
    出于隐私考虑，默认禁用。
 
-5. `napcat`: Napcat的部署配置。
+6. `napcat`: Napcat的部署配置。
 
    考虑到复用外部Napcat实例的情况，Napcat部署已被解耦。用户可选是否要部署Napcat。
 
    默认会捆绑部署Napcat。
 
-6. `sqlite_web`: sqlite-web的部署配置。
+7. `sqlite_web`: sqlite-web的部署配置。
 
    通过sqlite-web可以在网页上操作麦麦的数据库，方便调试。不部署对麦麦的运行无影响。
 
    此服务如果暴露在公网会十分危险，默认不会部署。
 
-7. `config`: 这里填写麦麦各部分组件的运行配置文件。
+8. `config`: 这里填写麦麦各部分组件的运行配置。
 
-   这里填写的配置文件需要严格遵守yaml文件的缩进格式。
+   这里填写的配置仅会在初次部署时或用户指定时覆盖实际配置文件，且需要严格遵守yaml文件的缩进格式。
+
+   - `override_*_config`: 指定本次部署/升级是否用以下配置覆盖实际配置文件。默认不覆盖。
 
    - `adapter_config`: 对应adapter的`config.toml`。
 
-     此配置文件中对于`host`和`port`的配置会被上面`adapter.service`中的配置覆盖，因此不需要改动。
+     此配置文件中对于`napcat_server`和`maibot_server`的`host`和`port`字段的配置会被上面`adapter.service`中的配置覆盖，因此不需要改动。
 
    - `core_model_config`: 对应core的`model_config.toml`。
 
@@ -72,22 +76,22 @@ helm install maimai \
 
 使用此Helm Chart的一些注意事项。
 
-### 修改麦麦配置
+### 麦麦的配置
 
-麦麦的配置文件会通过ConfigMap资源注入各个组件内。
+要修改麦麦的配置，最好的方法是通过WebUI来操作。此处的配置只会在初次部署时或者指定覆盖时注入到MaiBot中。
 
-对于通过Helm Chart部署的麦麦，如果需要修改配置，不应该直接修改这些ConfigMap，否则下次Helm更新可能会覆盖掉所有配置。
+`0.11.6-beta`之前的版本将配置存储于k8s的ConfigMap资源中。随着版本迭代，MaiBot对配置文件的操作复杂性增加，k8s的适配复杂度也同步增加，且WebUI可以直接修改配置文件，因此自`0.11.6-beta`版本开始，各组件的配置不再存储于k8s的ConfigMap中，而是直接存储于存储卷的实际文件中。
 
-最佳实践是重新配置Helm Chart的values，然后通过`helm upgrade`更新实例。
+从旧版本升级的用户，旧的ConfigMap的配置会自动迁移到新的存储卷的配置文件中。
 
 ### 动态生成的ConfigMap
 
-adapter的ConfigMap是每次部署/更新Helm安装实例时动态生成的。
+adapter的配置中的`napcat_server`和`maibot_server`的`host`和`port`字段，会在每次部署/更新Helm安装实例时被自动重置。
 
-动态生成的原因：
+自动重置的原因：
 
-- core服务的DNS名称是动态的，无法在adapter服务的配置文件中提前确定。
-- 一些与k8s现有资源冲突的配置需要被重置。
+- core的Service的DNS名称是动态的（由安装实例名拼接），无法在adapter的配置文件中提前确定。
+- 为了使adapter监听所有地址以及保持Helm Chart中配置的端口号，需要在adapter的配置文件中覆盖这些配置。
 
 因此，首次部署时，ConfigMap的生成会需要一些时间，部分Pod会无法启动，等待几分钟即可。
 
@@ -101,31 +105,4 @@ adapter的ConfigMap是每次部署/更新Helm安装实例时动态生成的。
 
 如果你的存储底层无法支持`ReadWriteMany`访问模式，你可以通过`nodeSelector`配置将statistics_dashboard与core调度到同一节点来避免问题。
 
-*如果启用了`sqlite-web`，那么上述问题也同样适用于`sqlite-web`与`core`，需要注意。*
-
-### 麦麦的默认插件
-
-麦麦的`core`容器提供了一些默认插件，以提升使用体验。但是插件目录存储在存储卷中，容器启动时挂载的存储卷会完全覆盖掉容器的默认插件目录，导致默认插件无法加载，也难以被用户感知。
-
-为了解决这一问题，此Helm Chart中为`core`容器引入了初始化容器。此初始化容器用于为用户自动安装默认插件到存储卷中。可以选择启用（默认启用）。
-
-*初始化容器使用与`core`主容器相同的镜像，且用后即销毁，因此不会消耗额外的带宽和存储成本。*
-
-#### 触发插件安装的条件
-
-- 首次部署时（此时没有任何插件处于安装状态）
-- 默认插件更新（即默认插件内容发生变化）
-
-#### 安装状态识别能力
-
-初始化容器会记录安装过的默认插件，不会重复安装。为了实现这一点，初始化容器会将安装状态写入`/MaiMBot/data/plugins/.installed-setup-plugins`文件中。
-
-基于上述状态识别能力，如果用户不需要某个插件，可以将其删除。由于此插件已自动安装过（记录在状态文件中），即使插件本体不存在也不会再次安装（除非插件更新）。
-
-#### 插件更新
-
-一旦在镜像中检测到新版本插件（即插件内容不同），初始化容器即会用新插件覆盖旧插件。
-
-考虑到旧插件中可能存在用户自定义配置，因此旧插件在被覆盖前会备份到`/MaiMBot/data/plugins-backup`目录中，并以时间归档。
-
-因此在升级麦麦后，请注意观察初始容器的日志并重新配置插件。
+*对于预处理任务和`sqlite-web`，上述问题也同样会出现，需要注意。*

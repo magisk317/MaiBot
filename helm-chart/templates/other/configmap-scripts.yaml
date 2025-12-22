@@ -7,8 +7,3 @@ data:
   # core
   k8s-init.sh: |
     {{ .Files.Get "files/k8s-init.sh" | nindent 4 }}
-  # core的初始化容器
-  {{- if .Values.core.setup_default_plugins }}
-  setup-plugins.py: |
-    {{ .Files.Get "files/setup-plugins.py" | nindent 4 }}
-  {{- end }}

@@ -5,6 +5,14 @@
 EULA_AGREE: false
 PRIVACY_AGREE: false
 
+# 预处理Job的配置
+pre_processor:
+  image:
+    repository: # 默认 reg.mikumikumi.xyz/maibot/preprocessor
+    tag: # 默认 0.11.6-beta
+    pullPolicy: IfNotPresent
+    pullSecrets: [ ]
+
 # 麦麦Adapter的部署配置
 adapter:
 
@@ -29,26 +37,23 @@ adapter:
     nodePort:  # 仅在设置NodePort类型时有效，不指定则会随机分配端口
 
   persistence:
-    storageClass:
-    accessModes:
-      - ReadWriteOnce
-    size: 1Gi
-
-  # adapter的动态生成configmap的Job的配置
-  cm_generator:
-    image:
-      repository: # 默认 reg.mikumikumi.xyz/maibot/adapter-cm-generator
-      tag: # 默认 0.11.5-beta
-      pullPolicy: IfNotPresent
-      pullSecrets: [ ]
-
+    config:
+      storageClass:
+      accessModes:
+        - ReadWriteOnce
+      size: 10Mi
+    data:
+      storageClass:
+      accessModes:
+        - ReadWriteOnce
+      size: 1Gi
 
 # 麦麦本体的部署配置
 core:
 
   image:
     repository: # 默认 sengokucola/maibot
-    tag: # 默认 0.11.5-beta
+    tag: # 默认 0.11.6-beta
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -58,23 +63,19 @@ core:
   tolerations: [ ]
 
   persistence:
-    storageClass:
-    accessModes:
-      - ReadWriteOnce
-    size: 10Gi
-
-  setup_default_plugins: true  # 启用一个初始化容器，用于为用户自动安装默认插件到存储卷中
+    config:
+      storageClass:
+      accessModes:
+        - ReadWriteOnce
+      size: 10Mi
+    data:
+      storageClass:
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
 
   webui:  # WebUI相关配置
-    # 对从helm chart 0.11.5-beta 之前的旧版升级的用户的重要提示：
-    # 旧版本helm chart没有配置configmap的保留策略，直接升级同时开启WebUI后会导致configmap丢失从而无法启动。
-    # 这种情况可以先禁用WebUI更新一次，再启用WebUI更新一次即可解决问题。
     enabled: true  # 默认启用
-    cm_sync:  # WebUI的辅助容器配置
-      image:
-        repository: # 默认 reg.mikumikumi.xyz/maibot/core-webui-cm-sync
-        tag: # 默认 0.11.5-beta
-        pullPolicy: IfNotPresent
     service:
       type: ClusterIP  # ClusterIP / NodePort 指定NodePort可以将内网的服务端口映射到物理节点的端口
       port: 8001  # 服务端口
@@ -139,7 +140,7 @@ napcat:
 
   image:
     repository: # 默认 mlikiowa/napcat-docker
-    tag: # 默认 v4.9.73
+    tag: # 默认 v4.9.80
     pullPolicy: IfNotPresent
     pullSecrets: [ ]
 
@@ -211,15 +212,17 @@ sqlite_web:
     path: /
     pathType: Prefix
 
-# 手动设置麦麦各部分组件的运行配置文件
+# 设置麦麦各部分组件的初始运行配置
+# 考虑到配置文件的操作复杂性增加，k8s的适配复杂度也同步增加，且WebUI可以直接修改配置文件
+# 自0.11.6-beta版本开始，各组件的配置不再存储于k8s的configmap中，而是直接存储于存储卷的实际文件中
+# 从旧版本升级的用户，旧的configmap的配置会自动迁移到新的存储卷的配置文件中
+# 此处的配置只在初次部署时或者指定覆盖时注入到MaiBot中
 config:
 
-  # 启用WebUI后，配置文件的修改即可在WebUI进行。如果通过WebUI修改了配置，则实际的配置文件将与values中的配置存在差异。
-  # 如果用户在k8s的ConfigMap中手动修改了配置文件，则实际的配置文件也会与values中的配置存在差异。
-  # 出现上述两种情况时，为了避免helm升级麦麦时，下面values中的配置覆盖掉已有的配置文件而导致配置丢失，可以在这里禁止本次部署时的配置覆盖。
-  # 注：由于adapter的配置无法通过WebUI修改，因此下面的adapter_config配置仍然会覆盖已有配置文件。
-  enable_config_override_without_webui: true  # 未启用WebUI时，默认覆盖
-  enable_config_override_with_webui: false  # 启用WebUI时，默认不覆盖
+  # 指定是否用下面的配置覆盖MaiBot现有的配置文件
+  override_adapter_config: false
+  override_core_bot_config: false
+  override_core_model_config: false
 
   # adapter的config.toml
   adapter_config: |
@@ -256,7 +259,7 @@ config:
   # core的model_config.toml
   core_model_config: |
     [inner]
-    version = "1.7.8"
+    version = "1.8.2"
     
     # 配置文件版本号迭代规则同bot_config.toml
     
@@ -303,7 +306,7 @@ config:
     api_provider = "DeepSeek"          # API服务商名称（对应在api_providers中配置的服务商名称）
     price_in = 2.0                     # 输入价格（用于API调用统计，单位：元/ M token）（可选，若无该字段，默认值为0）
     price_out = 8.0                    # 输出价格（用于API调用统计，单位：元/ M token）（可选，若无该字段，默认值为0）
-    #force_stream_mode = true          # 强制流式输出模式（若模型不支持非流式输出，请取消该注释，启用强制流式输出，若无该字段，默认值为false）
+    # force_stream_mode = true          # 强制流式输出模式（若模型不支持非流式输出，请取消该注释，启用强制流式输出，若无该字段，默认值为false）
     
     [[models]]
     model_identifier = "deepseek-ai/DeepSeek-V3.2-Exp"
@@ -313,6 +316,7 @@ config:
     price_out = 3.0
     [models.extra_params] # 可选的额外参数配置
     enable_thinking = false # 不启用思考
+    # temperature = 0.5    # 可选：为该模型单独指定温度，会覆盖任务配置中的温度
     
     [[models]]
     model_identifier = "deepseek-ai/DeepSeek-V3.2-Exp"
@@ -321,7 +325,33 @@ config:
     price_in = 2.0
     price_out = 3.0
     [models.extra_params] # 可选的额外参数配置
-    enable_thinking = true # 不启用思考
+    enable_thinking = true # 启用思考
+    # temperature = 0.7    # 可选：为该模型单独指定温度，会覆盖任务配置中的温度
+    
+    [[models]]
+    model_identifier = "Qwen/Qwen3-Next-80B-A3B-Instruct"
+    name = "qwen3-next-80b"
+    api_provider = "SiliconFlow"    
+    price_in = 1.0
+    price_out = 4.0
+    
+    [[models]]
+    model_identifier = "zai-org/GLM-4.6"
+    name = "siliconflow-glm-4.6"
+    api_provider = "SiliconFlow"    
+    price_in = 3.5
+    price_out = 14.0
+    [models.extra_params] # 可选的额外参数配置
+    enable_thinking = false # 不启用思考
+    
+    [[models]]
+    model_identifier = "zai-org/GLM-4.6"
+    name = "siliconflow-glm-4.6-think"
+    api_provider = "SiliconFlow"    
+    price_in = 3.5
+    price_out = 14.0
+    [models.extra_params] # 可选的额外参数配置
+    enable_thinking = true # 启用思考
     
     [[models]]
     model_identifier = "deepseek-ai/DeepSeek-R1"
@@ -365,63 +395,74 @@ config:
     model_list = ["siliconflow-deepseek-v3.2"] # 使用的模型列表，每个子项对应上面的模型名称(name)
     temperature = 0.2                        # 模型温度，新V3建议0.1-0.3
     max_tokens = 2048                         # 最大输出token数
+    slow_threshold = 15.0                     # 慢请求阈值（秒），模型等待回复时间超过此值会输出警告日志
     
     [model_task_config.utils_small] # 在麦麦的一些组件中使用的小模型，消耗量较大，建议使用速度较快的小模型
     model_list = ["qwen3-30b","qwen3-next-80b"]
     temperature = 0.7
     max_tokens = 2048
+    slow_threshold = 10.0
     
     [model_task_config.tool_use] #工具调用模型，需要使用支持工具调用的模型
     model_list = ["qwen3-30b","qwen3-next-80b"]
     temperature = 0.7
     max_tokens = 800
+    slow_threshold = 10.0
     
     [model_task_config.replyer] # 首要回复模型，还用于表达器和表达方式学习
-    model_list = ["siliconflow-deepseek-v3.2-think","siliconflow-glm-4.6-think","siliconflow-glm-4.6"]
+    model_list = ["siliconflow-deepseek-v3.2","siliconflow-deepseek-v3.2-think","siliconflow-glm-4.6","siliconflow-glm-4.6-think"]
     temperature = 0.3                        # 模型温度，新V3建议0.1-0.3
     max_tokens = 2048
+    slow_threshold = 25.0
     
     [model_task_config.planner] #决策：负责决定麦麦该什么时候回复的模型
     model_list = ["siliconflow-deepseek-v3.2"]
     temperature = 0.3
     max_tokens = 800
+    slow_threshold = 12.0
     
     [model_task_config.vlm] # 图像识别模型
     model_list = ["qwen3-vl-30"]
     max_tokens = 256
+    slow_threshold = 15.0
     
     [model_task_config.voice] # 语音识别模型
     model_list = ["sensevoice-small"]
+    slow_threshold = 12.0
     
-    #嵌入模型
+    # 嵌入模型
     [model_task_config.embedding]
     model_list = ["bge-m3"]
+    slow_threshold = 5.0
     
-    #------------LPMM知识库模型------------
+    # ------------LPMM知识库模型------------
     
     [model_task_config.lpmm_entity_extract] # 实体提取模型
     model_list = ["siliconflow-deepseek-v3.2"]
     temperature = 0.2
     max_tokens = 800
+    slow_threshold = 20.0
     
     [model_task_config.lpmm_rdf_build] # RDF构建模型
     model_list = ["siliconflow-deepseek-v3.2"]
     temperature = 0.2
     max_tokens = 800
+    slow_threshold = 20.0
     
     [model_task_config.lpmm_qa] # 问答模型
     model_list = ["siliconflow-deepseek-v3.2"]
     temperature = 0.7
     max_tokens = 800
+    slow_threshold = 20.0
 
   # core的bot_config.toml
   core_bot_config: |
     [inner]
-    version = "6.21.8"
+    version = "6.23.5"
     
     #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
-    #如果你想要修改配置文件，请递增version的值
-    #如果新增项目，请阅读src/config/official_configs.py中的说明
+    # 如果你想要修改配置文件，请递增version的值
+    # 如果新增项目，请阅读src/config/official_configs.py中的说明
     #
     # 版本格式：主版本号.次版本号.修订号，版本号递增规则如下：
     #     主版本号：MMC版本更新
@@ -441,7 +482,7 @@ config:
     [personality]
     # 建议120字以内，描述人格特质 和 身份特征
     personality = "是一个女大学生，现在在读大二，会刷贴吧。" 
-    #アイデンティティがない 生まれないらららら
+    # アイデンティティがない 生まれないらららら
     # 描述麦麦说话的表达风格，表达习惯，如要修改，可以酌情新增内容
     reply_style = "请回复的平淡一些，简短一些，说中文，不要刻意突出自身学科背景。可以参考贴吧，知乎和微博的回复风格。"
     
@@ -498,12 +539,16 @@ config:
         # 注意：如果为群聊，则需要设置为group，如果设置为私聊，则需要设置为private
     ]
     
+    reflect = false # 是否启用表达反思（Bot主动向管理员询问表达方式是否合适）
+    reflect_operator_id = "" # 表达反思操作员ID，格式：platform:id:type (例如 "qq:123456:private" 或 "qq:654321:group")
+    allow_reflect = [] # 允许进行表达反思的聊天流ID列表，格式：["qq:123456:private", "qq:654321:group", ...]，只有在此列表中的聊天流才会提出问题并跟踪。如果列表为空，则所有聊天流都可以进行表达反思（前提是 reflect = true）
     
-    [chat] #麦麦的聊天设置
-    talk_value = 1 #聊天频率，越小越沉默，范围0-1
+    
+    [chat] # 麦麦的聊天设置
+    talk_value = 1 # 聊天频率，越小越沉默，范围0-1
     mentioned_bot_reply = true # 是否启用提及必回复
     max_context_size = 30 # 上下文长度
-    planner_smooth = 2 #规划器平滑，增大数值会减小planner负荷，略微降低反应速度，推荐1-5，0为关闭，必须大于等于0
+    planner_smooth = 2 # 规划器平滑，增大数值会减小planner负荷，略微降低反应速度，推荐1-5，0为关闭，必须大于等于0
     
     enable_talk_value_rules = true # 是否启用动态发言频率规则
     
@@ -523,6 +568,7 @@ config:
     
     [memory]
     max_agent_iterations = 3 # 记忆思考深度（最低为1（不深入思考））
+    enable_jargon_detection = true # 记忆检索过程中是否启用黑话识别
     
     [jargon]
     all_global = true # 是否开启全局黑话模式，注意，此功能关闭后，已经记录的全局黑话不会改变，需要手动删除
@@ -556,8 +602,8 @@ config:
     
     ban_msgs_regex = [
         # 需要过滤的消息（原始消息）匹配的正则表达式，匹配到的消息将被过滤，若不了解正则表达式请勿修改
-        #"https?://[^\\s]+", # 匹配https链接
-        #"\\d{4}-\\d{2}-\\d{2}", # 匹配日期
+        # "https?://[^\\s]+", # 匹配https链接
+        # "\\d{4}-\\d{2}-\\d{2}", # 匹配日期
     ]
     
     
@@ -586,7 +632,7 @@ config:
     keyword_rules = [
         { keywords = ["人机", "bot", "机器", "入机", "robot", "机器人", "ai", "AI"], reaction = "有人说你是人机或者机器人，否定这一事实，攻击或反问他。注意，只有认为你是机器人才回复，否则不要否认" },
         { keywords = ["测试关键词回复", "test"], reaction = "回答测试成功" },
-        #{ keywords = ["你好", "hello"], reaction = "你好，有什么可以帮你？" }    
+        # { keywords = ["你好", "hello"], reaction = "你好，有什么可以帮你？" }    
         # 在此处添加更多规则，格式同上
     ]
     
@@ -659,6 +705,7 @@ config:
     chat_prompts = []
     
     
-    #此系统暂时移除，无效配置
+    # 此系统暂时移除，无效配置
     [relationship]
     enable_relationship = true # 是否启用关系系统
+

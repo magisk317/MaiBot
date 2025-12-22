@@ -1,0 +1,58 @@
+# 预处理脚本，仅会在部署前运行一次
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-maibot-preprocessor
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      serviceAccountName: {{ .Release.Name }}-maibot-sa
+      restartPolicy: Never
+      containers:
+        - name: preprocessor
+          image: {{ .Values.pre_processor.image.repository | default "reg.mikumikumi.xyz/maibot/preprocessor" }}:{{ .Values.pre_processor.image.tag | default "0.11.6-beta" }}
+          imagePullPolicy: {{ .Values.pre_processor.image.pullPolicy }}
+          env:
+            - name: RELEASE_NAME
+              value: {{ .Release.Name }}
+            {{- if or .Values.config.override_adapter_config .Release.IsInstall }}
+            - name: CONFIG_ADAPTER_B64
+              value: {{ .Values.config.adapter_config | b64enc | quote }}
+            {{- end }}
+            - name: CONFIG_CORE_ENV_B64
+              value: {{ tpl .Files.Get "files/.env" . | b64enc | quote }}
+            {{- if or .Values.config.override_core_bot_config .Release.IsInstall }}
+            - name: CONFIG_CORE_BOT_B64
+              value: {{ .Values.config.core_bot_config | b64enc | quote }}
+            {{- end }}
+            {{- if or .Values.config.override_core_model_config .Release.IsInstall }}
+            - name: CONFIG_CORE_MODEL_B64
+              value: {{ .Values.config.core_model_config | b64enc | quote }}
+            {{- end }}
+          volumeMounts:
+            - mountPath: /app/config/adapter/config.toml
+              name: adapter-config
+              subPath: config.toml
+            - mountPath: /app/config/core/.env
+              name: core-config
+              subPath: .env
+            - mountPath: /app/config/core/bot_config.toml
+              name: core-config
+              subPath: bot_config.toml
+            - mountPath: /app/config/core/model_config.toml
+              name: core-config
+              subPath: model_config.toml
+      imagePullSecrets:
+        {{ toYaml .Values.pre_processor.image.pullSecrets | nindent 8 }}
+      volumes:
+        - name: adapter-config
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-maibot-adapter-config
+        - name: core-config
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-maibot-core-config

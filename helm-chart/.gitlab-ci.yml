@@ -8,35 +8,18 @@ workflow:
     - if: '$CI_COMMIT_BRANCH == "helm-chart"'
     - when: never
 
-# 构建并推送adapter-cm-generator镜像
-build-adapter-cm-generator:
+# 构建并推送processor镜像
+build-preprocessor:
   stage: build-image
   image: reg.mikumikumi.xyz/base/kaniko-builder:latest
   variables:
     BUILD_NO_CACHE: true
   rules:
     - changes:
-        - helm-chart/adapter-cm-generator/**
+        - helm-chart/preprocessor/**
   script:
-    - export BUILD_CONTEXT=helm-chart/adapter-cm-generator
-    - export TMP_DST=reg.mikumikumi.xyz/maibot/adapter-cm-generator
-    - export CHART_VERSION=$(cat helm-chart/Chart.yaml | grep '^version:' | cut -d' ' -f2)
-    - export BUILD_DESTINATION="${TMP_DST}:${CHART_VERSION}"
-    - export BUILD_ARGS="--destination ${TMP_DST}:latest"
-    - build
-
-# 构建并推送core-webui-cm-sync镜像
-build-core-webui-cm-sync:
-  stage: build-image
-  image: reg.mikumikumi.xyz/base/kaniko-builder:latest
-  variables:
-    BUILD_NO_CACHE: true
-  rules:
-    - changes:
-        - helm-chart/core-webui-cm-sync/**
-  script:
-    - export BUILD_CONTEXT=helm-chart/core-webui-cm-sync
-    - export TMP_DST=reg.mikumikumi.xyz/maibot/core-webui-cm-sync
+    - export BUILD_CONTEXT=helm-chart/preprocessor
+    - export TMP_DST=reg.mikumikumi.xyz/maibot/preprocessor
     - export CHART_VERSION=$(cat helm-chart/Chart.yaml | grep '^version:' | cut -d' ' -f2)
     - export BUILD_DESTINATION="${TMP_DST}:${CHART_VERSION}"
     - export BUILD_ARGS="--destination ${TMP_DST}:latest"

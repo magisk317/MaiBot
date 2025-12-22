@@ -7,7 +7,7 @@ metadata:
     app: {{ .Release.Name }}-maibot-adapter
 spec:
   serviceName: {{ .Release.Name }}-maibot-adapter
-  replicas: 1
+  replicas: 0  # post-install任务初始化完毕后自动扩容至1
   selector:
     matchLabels:
       app: {{ .Release.Name }}-maibot-adapter
@@ -36,7 +36,6 @@ spec:
               name: data
             - mountPath: /adapters/config.toml
               name: config
-              readOnly: true
               subPath: config.toml
       {{- if .Values.adapter.image.pullSecrets }}
       imagePullSecrets:
@@ -54,9 +53,6 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-maibot-adapter
-        - configMap:
-            items:
-              - key: config.toml
-                path: config.toml
-            name: {{ .Release.Name }}-maibot-adapter-config
-          name: config
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-maibot-adapter-config

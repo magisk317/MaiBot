@@ -7,7 +7,7 @@ metadata:
     app: {{ .Release.Name }}-maibot-core
 spec:
   serviceName: {{ .Release.Name }}-maibot-core
-  replicas: 1
+  replicas: 0  # post-install任务初始化完毕后自动扩容至1
   selector:
     matchLabels:
       app: {{ .Release.Name }}-maibot-core
@@ -31,9 +31,9 @@ spec:
               value: "9943b855e72199d0f5016ea39052f1b6"
             {{- if .Values.core.webui.enabled }}
             - name: MAIBOT_WEBUI_ENABLED
-              value: "true"
+              value: {{ .Values.core.webui.enabled }}
             {{- end}}
-          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.5-beta" }}
+          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.6-beta" }}
           imagePullPolicy: {{ .Values.core.image.pullPolicy }}
           ports:
             - containerPort: 8000
@@ -56,59 +56,18 @@ spec:
               readOnly: true
               subPath: k8s-init.sh
             - mountPath: /MaiMBot/.env
-              name: env-config
-              readOnly: true
+              name: config
               subPath: .env
-            {{- if not .Values.core.webui.enabled }}
             - mountPath: /MaiMBot/config/model_config.toml
-              name: model-config
-              readOnly: true
+              name: config
               subPath: model_config.toml
             - mountPath: /MaiMBot/config/bot_config.toml
-              name: bot-config
-              readOnly: true
+              name: config
               subPath: bot_config.toml
-            {{- end }}
             {{- if .Values.statistics_dashboard.enabled }}
             - mountPath: /MaiMBot/statistics
               name: statistics
             {{- end }}
-            {{- if .Values.core.webui.enabled }}
-            - mountPath: /MaiMBot/webui-cm-sync
-              name: webui-cm-sync
-            {{- end }}
-      {{- if .Values.core.webui.enabled }}
-        - name: webui-cm-sync
-          image: {{ .Values.core.webui.cm_sync.image.repository | default "reg.mikumikumi.xyz/maibot/core-webui-cm-sync" }}:{{ .Values.core.webui.cm_sync.image.tag | default "0.11.5-beta" }}
-          imagePullPolicy: {{ .Values.core.webui.cm_sync.image.pullPolicy }}
-          env:
-            - name: PYTHONUNBUFFERED
-              value: "1"
-            - name: RELEASE_NAME
-              value: {{ .Release.Name }}
-          volumeMounts:
-            - mountPath: /MaiMBot/webui-cm-sync
-              name: webui-cm-sync
-      {{- end }}
-      {{- if .Values.core.setup_default_plugins }}
-      initContainers:  # 用户插件目录存储在存储卷中，会在启动时覆盖掉容器的默认插件目录。此初始化容器用于默认插件更新后或麦麦首次启动时为用户自动安装默认插件到存储卷中
-        - args:
-            - setup-plugins.py
-          command:
-            - python3
-          workingDir: /MaiMBot
-          image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.5-beta" }}
-          imagePullPolicy: {{ .Values.core.image.pullPolicy }}
-          name: setup-plugins
-          resources: { }
-          volumeMounts:
-            - mountPath: /MaiMBot/data
-              name: data
-            - mountPath: /MaiMBot/setup-plugins.py
-              name: scripts
-              readOnly: true
-              subPath: setup-plugins.py
-      {{- end }}
       serviceAccountName: {{ .Release.Name }}-maibot-sa
       {{- if .Values.core.image.pullSecrets }}
       imagePullSecrets:
@@ -130,38 +89,13 @@ spec:
             items:
               - key: k8s-init.sh
                 path: k8s-init.sh
-              {{- if .Values.core.setup_default_plugins }}
-              - key: setup-plugins.py
-                path: setup-plugins.py
-              {{- end }}
             name: {{ .Release.Name }}-maibot-scripts
           name: scripts
-        - configMap:
-            items:
-              - key: .env
-                path: .env
-            name: {{ .Release.Name }}-maibot-core-env-config
-          name: env-config
-        {{- if not .Values.core.webui.enabled }}
-        - configMap:
-            items:
-              - key: model_config.toml
-                path: model_config.toml
-            name: {{ .Release.Name }}-maibot-core-model-config
-          name: model-config
-        - configMap:
-            items:
-              - key: bot_config.toml
-                path: bot_config.toml
-            name: {{ .Release.Name }}-maibot-core-bot-config
-          name: bot-config
-        {{- end }}
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-maibot-core-config
         {{- if .Values.statistics_dashboard.enabled }}
         - name: statistics
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-maibot-statistics-dashboard
-        {{- end }}
-        {{- if .Values.core.webui.enabled }}
-        - emptyDir: {}
-          name: webui-cm-sync
         {{- end }}
