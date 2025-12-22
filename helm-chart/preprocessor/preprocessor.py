@@ -47,14 +47,10 @@ def migrate_old_config():
         'core_model_config.toml': False
     }
 
-    # 如果存储卷中已存在配置文件，则警告并跳过迁移
+    # 如果存储卷中已存在配置文件，则跳过迁移
     if os.path.isfile('/app/config/core/bot_config.toml') or os.path.isfile('/app/config/core/model_config.toml') or \
             os.path.isfile('/app/config/adapter/config.toml'):
-        log(func_name, 'Found existing config file(s) in PV. Migration will be skipped. '
-                       'Please check the configs MANUALLY.', level='WARNING')
-        log(func_name, '\tIf configs were ALREADY MIGRATED, you can delete old configmaps safely.', level='WARNING')
-        log(func_name, '\tIf configs were NOT MIGRATED, you should MIGRATE them MANUALLY, then delete the configmaps.',
-            level='WARNING')
+        log(func_name, 'Found existing config file(s) in PV. Migration will be ignored. Done.')
         return
 
     def migrate_cm_to_file(cm_name: str, key_name: str, file_path: str) -> bool:
