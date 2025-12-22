@@ -33,7 +33,7 @@ config_core_model_b64 = os.getenv("CONFIG_CORE_MODEL_B64")
 
 
 def log(func: str, msg: str, level: str = 'INFO'):
-    print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}][{func}][{level}] {msg}')
+    print(f'[{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}] [{level}] [{func}] {msg}')
 
 
 def migrate_old_config():

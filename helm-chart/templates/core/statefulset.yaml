@@ -26,7 +26,7 @@ spec:
             - name: TZ
               value: "Asia/Shanghai"
             - name: EULA_AGREE
-              value: "99f08e0cab0190de853cb6af7d64d4de"
+              value: "1b662741904d7155d1ce1c00b3530d0d"
             - name: PRIVACY_AGREE
               value: "9943b855e72199d0f5016ea39052f1b6"
           image: {{ .Values.core.image.repository | default "sengokucola/maibot" }}:{{ .Values.core.image.tag | default "0.11.6-beta" }}
