@@ -10,6 +10,7 @@
 
 | Helm Chart版本   | 对应的MaiBot版本  | Commit SHA                               |
 |----------------|--------------|------------------------------------------|
+| 0.12.0         | 0.12.0       |                                          |
 | 0.11.6-beta    | 0.11.6-beta  | 0bfff0457e6db3f7102fb7f77c58d972634fc93c |
 | 0.11.5-beta    | 0.11.5-beta  | ad2df627001f18996802f23c405b263e78af0d0f |
 | 0.11.3-beta    | 0.11.3-beta  | cd6dc18f546f81e08803d3b8dba48e504dad9295 |
@@ -88,13 +89,16 @@ helm install maimai \
 ### 部署时自动重置的配置
 
 adapter的配置中的`napcat_server`和`maibot_server`的`host`和`port`字段，会在每次部署/更新Helm安装实例时被自动重置。
+core的配置中的`webui`和`maim_message`的部分字段也会在每次部署/更新Helm安装实例时被自动重置。
 
 自动重置的原因：
 
 - core的Service的DNS名称是动态的（由安装实例名拼接），无法在adapter的配置文件中提前确定。
 - 为了使adapter监听所有地址以及保持Helm Chart中配置的端口号，需要在adapter的配置文件中覆盖这些配置。
+- core的WebUI启停需要由helm chart控制，以便正常创建Service和Ingress资源。
+- core的maim_message的api server现在可以作为k8s服务暴露出来。监听的IP和端口需要由helm chart控制，以便Service正确映射。
 
-因此，首次部署时，ConfigMap的生成会需要一些时间，部分Pod会无法启动，等待几分钟即可。
+首次部署时，预处理任务会负责重置这些配置。这会需要一些时间，因此部署进程可能比较慢，且部分Pod可能会无法启动，等待一分钟左右即可。
 
 ### 跨节点PVC挂载问题
 

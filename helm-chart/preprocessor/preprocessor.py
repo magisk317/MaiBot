@@ -1,14 +1,22 @@
 #!/bin/python3
 # 此脚本会被helm chart的post-install hook触发，在正式部署后通过k8s的job自动运行一次。
-# 这个脚本的作用是在部署helm chart时迁移旧版ConfigMap到配置文件，并调整adapter的配置文件中的服务监听和服务连接字段。
+# 这个脚本的作用是在部署helm chart时迁移旧版ConfigMap到配置文件，调整adapter的配置文件中的服务监听和服务连接字段，调整core的配置文件中的maim_message_api_server和WebUI配置。
+#
 # - 迁移旧版ConfigMap到配置文件是因为0.11.6-beta之前版本的helm chart将各个配置文件存储在k8s的ConfigMap中，
 #   由于功能复杂度提升，自0.11.6-beta版本开始配置文件采用文件形式存储到存储卷中。
 #   从旧版升级来的用户会通过这个脚本自动执行配置的迁移。
+#
 # - 需要调整adapter的配置文件的原因是:
 #   1. core的Service的DNS名称是动态的（由安装实例名拼接），无法在adapter的配置文件中提前确定。
 #      用于对外连接的maibot_server.host和maibot_server.port字段，会被替换为core的Service对应的DNS名称和8000端口（硬编码，用户无需配置）。
 #   2. 为了使adapter监听所有地址以及保持chart中配置的端口号，需要在adapter的配置文件中覆盖这些配置。
 #      用于监听的napcat_server.host和napcat_server.port字段，会被替换为0.0.0.0和8095端口（实际映射到的Service端口会在Service中配置）。
+#
+# - 需要调整core的配置文件的原因是：
+#   1. core的WebUI启停需要由helm chart控制，以便正常创建Service和Ingress资源。
+#      配置文件中的webui.enabled、webui.allowed_ips将由此脚本覆盖为正确配置。
+#   2. core的maim_message的api server现在可以作为k8s服务暴露出来。监听的IP和端口需要由helm chart控制，以便Service正确映射。
+#      配置文件中的maim_message.enable_api_server、maim_message.api_server_host、maim_message.api_server_port将由此脚本覆盖为正确配置。
 
 import os
 import toml
@@ -26,6 +34,8 @@ apps_api = client.AppsV1Api()
 with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r') as f:
     namespace = f.read().strip()
 release_name = os.getenv("RELEASE_NAME").strip()
+is_webui_enabled = os.getenv("IS_WEBUI_ENABLED").lower() == "true"
+is_maim_message_api_server_enabled = os.getenv("IS_MMSG_ENABLED").lower() == "true"
 config_adapter_b64 = os.getenv("CONFIG_ADAPTER_B64")
 config_core_env_b64 = os.getenv("CONFIG_CORE_ENV_B64")
 config_core_bot_b64 = os.getenv("CONFIG_CORE_BOT_B64")
@@ -162,6 +172,24 @@ def reconfigure_adapter():
     log(func_name, 'Reconfiguration done.')
 
 
+def reconfigure_core():
+    """调整core的配置文件的webui和maim_message字段，使其服务能被正确映射"""
+    func_name = 'reconfigure_core'
+    log(func_name, 'Reconfiguring `bot_config.toml` of core...')
+    with open('/app/config/core/bot_config.toml', 'r', encoding='utf-8') as _f:
+        config_core = toml.load(_f)
+    config_core.setdefault('webui', {})
+    config_core['webui']['enabled'] = is_webui_enabled
+    config_core['webui']['allowed_ips'] = '0.0.0.0/0'  # 部署于k8s内网，使用宽松策略
+    config_core.setdefault('maim_message', {})
+    config_core['maim_message']['enable_api_server'] = is_maim_message_api_server_enabled
+    config_core['maim_message']['api_server_host'] = '0.0.0.0'
+    config_core['maim_message']['api_server_port'] = 8090
+    with open('/app/config/core/bot_config.toml', 'w', encoding='utf-8') as _f:
+        _f.write(toml.dumps(config_core))
+    log(func_name, 'Reconfiguration done.')
+
+
 def _scale_statefulsets(statefulsets: list[str], replicas: int, wait: bool = False, timeout: int = 300):
     """调整指定几个statefulset的副本数，wait参数控制是否等待调整完成再返回"""
     statefulsets = set(statefulsets)
@@ -232,6 +260,7 @@ if __name__ == '__main__':
     migrate_old_config()
     write_config_files()
     reconfigure_adapter()
+    reconfigure_core()
     log('main', 'Scaling adapter and core to 1...')
     _scale_statefulsets([f'{release_name}-maibot-adapter', f'{release_name}-maibot-core'], 1)
     log('main', 'Process done.')

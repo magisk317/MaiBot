@@ -20,6 +20,15 @@ spec:
       nodePort: {{ .Values.core.webui.service.nodePort | default nil }}
       {{- end }}
     {{- end }}
+    {{- if .Values.core.maim_message_api_server.enabled }}
+    - name: maim-message
+      port: {{ .Values.core.maim_message_api_server.service.port }}
+      protocol: TCP
+      targetPort: 8090
+      {{- if eq .Values.core.maim_message_api_server.service.type "NodePort" }}
+      nodePort: {{ .Values.core.maim_message_api_server.service.nodePort | default nil }}
+      {{- end }}
+    {{- end }}
   selector:
     app: {{ .Release.Name }}-maibot-core
   type: ClusterIP
