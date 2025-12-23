@@ -85,7 +85,7 @@ helm install maimai \
 
 从旧版本升级的用户，旧的ConfigMap的配置会自动迁移到新的存储卷的配置文件中。
 
-### 动态生成的ConfigMap
+### 部署时自动重置的配置
 
 adapter的配置中的`napcat_server`和`maibot_server`的`host`和`port`字段，会在每次部署/更新Helm安装实例时被自动重置。
 
@@ -96,14 +96,19 @@ adapter的配置中的`napcat_server`和`maibot_server`的`host`和`port`字段�
 
 因此，首次部署时，ConfigMap的生成会需要一些时间，部分Pod会无法启动，等待几分钟即可。
 
-### 运行统计看板与core的挂载冲突
+### 跨节点PVC挂载问题
 
-如果启用了运行统计看板，那么statistics_dashboard会与core共同挂载statistics_dashboard存储卷，用于同步html文件。
+MaiBot的一些组件会挂载同一PVC，这主要是为了同步数据或修改配置。
 
-如果k8s集群有多个节点，且statistics_dashboard与core未调度到同一节点，那么就需要statistics_dashboard的PVC访问模式具备`ReadWriteMany`访问模式。
+如果k8s集群有多个节点，且共享相同PVC的Pod未调度到同一节点，那么就需要此PVC访问模式具备`ReadWriteMany`访问模式。
 
-不是所有存储卷的底层存储都支持`ReadWriteMany`访问模式。
+不是所有存储控制器都支持`ReadWriteMany`访问模式。
 
-如果你的存储底层无法支持`ReadWriteMany`访问模式，你可以通过`nodeSelector`配置将statistics_dashboard与core调度到同一节点来避免问题。
+如果你的存储控制器无法支持`ReadWriteMany`访问模式，你可以通过`nodeSelector`配置将彼此之间共享相同PVC的Pod调度到同一节点来避免问题。
 
-*对于预处理任务和`sqlite-web`，上述问题也同样会出现，需要注意。*
+会共享PVC的组件列表：
+
+- `core`和`adapter`：共享`adapter-config`，用于为`core`的WebUI提供修改adapter的配置文件的能力。
+- `core`和`statistics-dashboard`：共享`statistics-dashboard`，用于同步统计数据的html文件。
+- `core`和`sqlite-web`：共享`maibot-core`，用于为`sqlite-web`提供操作MaiBot数据库的能力。
+- 部署时的预处理任务`preprocessor`和`adapter`、`core`：共享`adapter-config`和`core-config`，用于初始化`core`和`adapter`的配置文件。

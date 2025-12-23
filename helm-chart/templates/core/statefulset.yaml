@@ -60,6 +60,9 @@ spec:
             - mountPath: /MaiMBot/config/bot_config.toml
               name: config
               subPath: bot_config.toml
+            - mountPath: /MaiMBot/adapters-config/config.toml  # WebUI修改adapter配置所用
+              name: adapter-config
+              subPath: config.toml
             {{- if .Values.statistics_dashboard.enabled }}
             - mountPath: /MaiMBot/statistics
               name: statistics
@@ -90,6 +93,9 @@ spec:
         - name: config
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-maibot-core-config
+        - name: adapter-config
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-maibot-adapter-config
         {{- if .Values.statistics_dashboard.enabled }}
         - name: statistics
           persistentVolumeClaim:
