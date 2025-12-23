@@ -168,12 +168,20 @@ class WebUIServer:
 
             # 导入本地聊天室路由
             from src.webui.chat_routes import router as chat_router
+            
+            # 导入规划器监控路由
+            from src.webui.api.planner import router as planner_router
+            
+            # 导入回复器监控路由
+            from src.webui.api.replier import router as replier_router
 
             # 注册路由
             self.app.include_router(webui_router)
             self.app.include_router(logs_router)
             self.app.include_router(knowledge_router)
             self.app.include_router(chat_router)
+            self.app.include_router(planner_router)
+            self.app.include_router(replier_router)
 
             logger.info("✅ WebUI API 路由已注册")
         except Exception as e:
