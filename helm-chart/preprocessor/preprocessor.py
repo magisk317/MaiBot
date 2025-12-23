@@ -141,7 +141,7 @@ def write_config_files():
             _f.write(config_str)
         log(func_name, '\t`.env` of core wrote.')
     if config_core_bot_b64:
-        log(func_name, '\tWriting `bot_config.toml` of core not found. Creating...')
+        log(func_name, '\tWriting `bot_config.toml` of core...')
         config_str = base64.b64decode(config_core_bot_b64).decode("utf-8")
         with open('/app/config/core/bot_config.toml', 'w', encoding='utf-8') as _f:
             _f.write(config_str)
