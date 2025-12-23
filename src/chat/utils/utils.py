@@ -4,6 +4,8 @@ import time
 import jieba
 import json
 import ast
+import os
+from datetime import datetime
 
 from typing import Optional, Tuple, List, TYPE_CHECKING
 
@@ -196,21 +198,54 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
         List[str]: 分割和合并后的句子列表
     """
     # 预处理：处理多余的换行符
-    # 1. 将连续的换行符替换为单个换行符
+    # 1. 将连续的换行符替换为单个换行符（保留换行符用于分割）
     text = re.sub(r"\n\s*\n+", "\n", text)
-    # 2. 处理换行符和其他分隔符的组合
-    text = re.sub(r"\n\s*([，,。;\s])", r"\1", text)
-    text = re.sub(r"([，,。;\s])\s*\n", r"\1", text)
+    # 2. 处理换行符和其他分隔符的组合（保留换行符，删除其他分隔符）
+    text = re.sub(r"\n\s*([，,。;\s])", r"\n\1", text)
+    text = re.sub(r"([，,。;\s])\s*\n", r"\1\n", text)
 
-    # 处理两个汉字中间的换行符
-    text = re.sub(r"([\u4e00-\u9fff])\n([\u4e00-\u9fff])", r"\1。\2", text)
+    # 处理两个汉字中间的换行符（保留换行符，不替换为句号，让换行符强制分割）
+    # text = re.sub(r"([\u4e00-\u9fff])\n([\u4e00-\u9fff])", r"\1。\2", text)  # 注释掉，保留换行符用于分割
 
     len_text = len(text)
     if len_text < 3:
         return list(text) if random.random() < 0.01 else [text]
 
-    # 定义分隔符
-    separators = {"，", ",", " ", "。", ";"}
+    # 先标记哪些位置位于成对引号内部，避免在引号内部进行句子分割
+    # 支持的引号包括：中英文单/双引号和常见中文书名号/引号
+    quote_chars = {
+        '"',
+        "'",
+        "“",
+        "”",
+        "‘",
+        "’",
+        "「",
+        "」",
+        "『",
+        "』",
+    }
+    inside_quote = [False] * len_text
+    in_quote = False
+    current_quote_char = ""
+    for idx, ch in enumerate(text):
+        if ch in quote_chars:
+            # 遇到引号时切换状态（英文引号本身开闭相同，用同一个字符表示）
+            if not in_quote:
+                in_quote = True
+                current_quote_char = ch
+                inside_quote[idx] = False
+            else:
+                # 只有遇到同一类引号才视为关闭
+                if ch == current_quote_char or ch in {'"', "'"} and current_quote_char in {'"', "'"}:
+                    in_quote = False
+                    current_quote_char = ""
+                inside_quote[idx] = False
+        else:
+            inside_quote[idx] = in_quote
+
+    # 定义分隔符（包含换行符）
+    separators = {"，", ",", " ", "。", ";", "\n"}
     segments = []
     current_segment = ""
 
@@ -219,24 +254,42 @@ def split_into_sentences_w_remove_punctuation(text: str) -> list[str]:
     while i < len(text):
         char = text[i]
         if char in separators:
-            # 检查分割条件：如果空格左右都是英文字母、数字，或数字和英文之间，则不分割（仅对空格应用此规则）
-            can_split = True
-            if 0 < i < len(text) - 1:
-                prev_char = text[i - 1]
-                next_char = text[i + 1]
-                # 只对空格应用"不分割数字和数字、数字和英文、英文和数字、英文和英文之间的空格"规则
-                if char == " ":
-                    prev_is_alnum = prev_char.isdigit() or is_english_letter(prev_char)
-                    next_is_alnum = next_char.isdigit() or is_english_letter(next_char)
-                    if prev_is_alnum and next_is_alnum:
-                        can_split = False
+            # 引号内部一律不作为分割点（包括换行）
+            if inside_quote[i]:
+                can_split = False
+            else:
+                # 换行符在不在引号内时都强制分割
+                if char == "\n":
+                    can_split = True
+                else:
+                    # 检查分割条件
+                    can_split = True
+                    # 检查分隔符左右是否有冒号（中英文），如果有则不分割
+                    if i > 0:
+                        prev_char = text[i - 1]
+                        if prev_char in {":", "："}:
+                            can_split = False
+                    if i < len(text) - 1:
+                        next_char = text[i + 1]
+                        if next_char in {":", "："}:
+                            can_split = False
+
+                    # 如果左右没有冒号，再检查空格的特殊情况
+                    if can_split and char == " " and i > 0 and i < len(text) - 1:
+                        prev_char = text[i - 1]
+                        next_char = text[i + 1]
+                        # 不分割数字和数字、数字和英文、英文和数字、英文和英文之间的空格
+                        prev_is_alnum = prev_char.isdigit() or is_english_letter(prev_char)
+                        next_is_alnum = next_char.isdigit() or is_english_letter(next_char)
+                        if prev_is_alnum and next_is_alnum:
+                            can_split = False
 
             if can_split:
                 # 只有当当前段不为空时才添加
                 if current_segment:
                     segments.append((current_segment, char))
-                # 如果当前段为空，但分隔符是空格，则也添加一个空段（保留空格）
-                elif char == " ":
+                # 如果当前段为空，但分隔符是空格或换行符，则也添加一个空段（保留分隔符）
+                elif char in {" ", "\n"}:
                     segments.append(("", char))
                 current_segment = ""
             else:
@@ -639,6 +692,42 @@ def get_chat_type_and_target_info(chat_id: str) -> Tuple[bool, Optional["TargetP
         logger.error(f"获取聊天类型和目标信息时出错 for {chat_id}: {e}", exc_info=True)
 
     return is_group_chat, chat_target_info
+
+
+def record_replyer_action_temp(chat_id: str, reason: str, think_level: int) -> None:
+    """
+    临时记录replyer动作被选择的信息（仅群聊）
+
+    Args:
+        chat_id: 聊天ID
+        reason: 选择理由
+        think_level: 思考深度等级
+    """
+    try:
+        # 确保data/temp目录存在
+        temp_dir = "data/temp"
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # 创建记录数据
+        record_data = {
+            "chat_id": chat_id,
+            "reason": reason,
+            "think_level": think_level,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        # 生成文件名（使用时间戳避免冲突）
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"replyer_action_{timestamp_str}.json"
+        filepath = os.path.join(temp_dir, filename)
+
+        # 写入文件
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(record_data, f, ensure_ascii=False, indent=2)
+
+        logger.debug(f"已记录replyer动作选择: chat_id={chat_id}, think_level={think_level}")
+    except Exception as e:
+        logger.warning(f"记录replyer动作选择失败: {e}")
 
 
 def assign_message_ids(messages: List[DatabaseMessages]) -> List[Tuple[str, DatabaseMessages]]:

@@ -43,10 +43,13 @@ class PersonalityConfig(ConfigBase):
     """人格"""
 
     reply_style: str = ""
-    """表达风格"""
+    """默认表达风格"""
 
-    interest: str = ""
-    """兴趣"""
+    multiple_reply_style: list[str] = field(default_factory=lambda: [])
+    """可选的多种表达风格列表，当配置不为空时可按概率随机替换 reply_style"""
+
+    multiple_probability: float = 0.0
+    """每次构建回复时，从 multiple_reply_style 中随机替换 reply_style 的概率（0.0-1.0）"""
 
     plan_style: str = ""
     """说话规则，行为风格"""
@@ -78,12 +81,6 @@ class ChatConfig(ConfigBase):
 
     max_context_size: int = 18
     """上下文长度"""
-
-    interest_rate_mode: Literal["fast", "accurate"] = "fast"
-    """兴趣值计算模式，fast为快速计算，accurate为精确计算"""
-
-    planner_size: float = 1.5
-    """副规划器大小，越小，麦麦的动作执行能力越精细，但是消耗更多token，调大可以缓解429类错误"""
 
     mentioned_bot_reply: bool = True
     """是否启用提及必回复"""
@@ -117,8 +114,13 @@ class ChatConfig(ConfigBase):
     时间区间支持跨夜，例如 "23:00-02:00"。
     """
 
-    include_planner_reasoning: bool = False
-    """是否将planner推理加入replyer，默认关闭（不加入）"""
+    think_mode: Literal["classic", "deep", "dynamic"] = "classic"
+    """
+    思考模式配置
+    - classic: 默认think_level为0（轻量回复，不需要思考和回忆）
+    - deep: 默认think_level为1（深度回复，需要进行回忆和思考）
+    - dynamic: think_level由planner动态给出（根据planner返回的think_level决定）
+    """
 
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
         """与 ChatStream.get_stream_id 一致地从 "platform:id:type" 生成 chat_id。"""
@@ -133,14 +135,9 @@ class ChatConfig(ConfigBase):
 
             is_group = stream_type == "group"
 
-            import hashlib
+            from src.chat.message_receive.chat_stream import get_chat_manager
 
-            if is_group:
-                components = [platform, str(id_str)]
-            else:
-                components = [platform, str(id_str), "private"]
-            key = "_".join(components)
-            return hashlib.md5(key.encode()).hexdigest()
+            return get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
 
         except (ValueError, IndexError):
             return None
@@ -173,7 +170,11 @@ class ChatConfig(ConfigBase):
     def get_talk_value(self, chat_id: Optional[str]) -> float:
         """根据规则返回当前 chat 的动态 talk_value，未匹配则回退到基础值。"""
         if not self.enable_talk_value_rules or not self.talk_value_rules:
-            return self.talk_value
+            result = self.talk_value
+            # 防止返回0值，自动转换为0.0001
+            if result == 0:
+                return 0.0000001
+            return result
 
         now_min = self._now_minutes()
 
@@ -199,7 +200,11 @@ class ChatConfig(ConfigBase):
                 start_min, end_min = parsed
                 if self._in_range(now_min, start_min, end_min):
                     try:
-                        return float(value)
+                        result = float(value)
+                        # 防止返回0值，自动转换为0.0001
+                        if result == 0:
+                            return 0.0000001
+                        return result
                     except Exception:
                         continue
 
@@ -218,12 +223,20 @@ class ChatConfig(ConfigBase):
             start_min, end_min = parsed
             if self._in_range(now_min, start_min, end_min):
                 try:
-                    return float(value)
+                    result = float(value)
+                    # 防止返回0值，自动转换为0.0001
+                    if result == 0:
+                        return 0.0000001
+                    return result
                 except Exception:
                     continue
 
         # 3) 未命中规则返回基础值
-        return self.talk_value
+        result = self.talk_value
+        # 防止返回0值，自动转换为0.0001
+        if result == 0:
+            return 0.0000001
+        return result
 
 
 @dataclass
@@ -244,13 +257,21 @@ class MemoryConfig(ConfigBase):
     max_agent_iterations: int = 5
     """Agent最多迭代轮数（最低为1）"""
 
+    agent_timeout_seconds: float = 120.0
+    """Agent超时时间（秒）"""
+
     enable_jargon_detection: bool = True
     """记忆检索过程中是否启用黑话识别"""
+
+    global_memory: bool = False
+    """是否允许记忆检索在聊天记录中进行全局查询（忽略当前chat_id，仅对 search_chat_history 等工具生效）"""
 
     def __post_init__(self):
         """验证配置值"""
         if self.max_agent_iterations < 1:
             raise ValueError(f"max_agent_iterations 必须至少为1，当前值: {self.max_agent_iterations}")
+        if self.agent_timeout_seconds <= 0:
+            raise ValueError(f"agent_timeout_seconds 必须大于0，当前值: {self.agent_timeout_seconds}")
 
 
 @dataclass
@@ -260,20 +281,20 @@ class ExpressionConfig(ConfigBase):
     learning_list: list[list] = field(default_factory=lambda: [])
     """
     表达学习配置列表，支持按聊天流配置
-    格式: [["chat_stream_id", "use_expression", "enable_learning", learning_intensity], ...]
+    格式: [["chat_stream_id", "use_expression", "enable_learning", "enable_jargon_learning"], ...]
     
     示例:
     [
-        ["", "enable", "enable", 1.0],  # 全局配置：使用表达，启用学习，学习强度1.0
-        ["qq:1919810:private", "enable", "enable", 1.5],  # 特定私聊配置：使用表达，启用学习，学习强度1.5
-        ["qq:114514:private", "enable", "disable", 0.5],  # 特定私聊配置：使用表达，禁用学习，学习强度0.5
+        ["", "enable", "enable", "enable"],  # 全局配置：使用表达，启用学习，启用jargon学习
+        ["qq:1919810:private", "enable", "enable", "enable"],  # 特定私聊配置：使用表达，启用学习，启用jargon学习
+        ["qq:114514:private", "enable", "disable", "disable"],  # 特定私聊配置：使用表达，禁用学习，禁用jargon学习
     ]
     
     说明:
     - 第一位: chat_stream_id，空字符串表示全局配置
     - 第二位: 是否使用学到的表达 ("enable"/"disable")
     - 第三位: 是否学习表达 ("enable"/"disable") 
-    - 第四位: 学习强度（浮点数），影响学习频率，最短学习时间间隔 = 300/学习强度（秒）
+    - 第四位: 是否启用jargon学习 ("enable"/"disable")
     """
 
     expression_groups: list[list[str]] = field(default_factory=list)
@@ -294,6 +315,19 @@ class ExpressionConfig(ConfigBase):
     格式: ["qq:123456:private", "qq:654321:group", ...]
     只有在此列表中的聊天流才会提出问题并跟踪
     如果列表为空，则所有聊天流都可以进行表达反思（前提是 reflect = true）
+    """
+
+    all_global_jargon: bool = False
+    """是否将所有新增的jargon项目默认为全局（is_global=True），chat_id记录第一次存储时的id。注意，此功能关闭后，已经记录的全局黑话不会改变，需要手动删除"""
+
+    enable_jargon_explanation: bool = True
+    """是否在回复前尝试对上下文中的黑话进行解释（关闭可减少一次LLM调用，仅影响回复前的黑话匹配与解释，不影响黑话学习）"""
+
+    jargon_mode: Literal["context", "planner"] = "context"
+    """
+    黑话解释来源模式：
+    - "context": 使用上下文自动匹配黑话并解释（原有模式）
+    - "planner": 仅使用 Planner 在 reply 动作中给出的 unknown_words 列表进行黑话检索
     """
 
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
@@ -318,20 +352,15 @@ class ExpressionConfig(ConfigBase):
             # 判断是否为群聊
             is_group = stream_type == "group"
 
-            # 使用与 ChatStream.get_stream_id 相同的逻辑生成 chat_id
-            import hashlib
+            # 使用 ChatManager 提供的接口生成 chat_id，避免在此重复实现逻辑
+            from src.chat.message_receive.chat_stream import get_chat_manager
 
-            if is_group:
-                components = [platform, str(id_str)]
-            else:
-                components = [platform, str(id_str), "private"]
-            key = "_".join(components)
-            return hashlib.md5(key.encode()).hexdigest()
+            return get_chat_manager().get_stream_id(platform, str(id_str), is_group=is_group)
 
         except (ValueError, IndexError):
             return None
 
-    def get_expression_config_for_chat(self, chat_stream_id: Optional[str] = None) -> tuple[bool, bool, int]:
+    def get_expression_config_for_chat(self, chat_stream_id: Optional[str] = None) -> tuple[bool, bool, bool]:
         """
         根据聊天流ID获取表达配置
 
@@ -339,11 +368,11 @@ class ExpressionConfig(ConfigBase):
             chat_stream_id: 聊天流ID，格式为哈希值
 
         Returns:
-            tuple: (是否使用表达, 是否学习表达, 学习间隔)
+            tuple: (是否使用表达, 是否学习表达, 是否启用jargon学习)
         """
         if not self.learning_list:
-            # 如果没有配置，使用默认值：启用表达，启用学习，300秒间隔
-            return True, True, 300
+            # 如果没有配置，使用默认值：启用表达，启用学习，启用jargon学习
+            return True, True, True
 
         # 优先检查聊天流特定的配置
         if chat_stream_id:
@@ -356,10 +385,10 @@ class ExpressionConfig(ConfigBase):
         if global_expression_config is not None:
             return global_expression_config
 
-        # 如果都没有匹配，返回默认值
-        return True, True, 300
+        # 如果都没有匹配，返回默认值：启用表达，启用学习，启用jargon学习
+        return True, True, True
 
-    def _get_stream_specific_config(self, chat_stream_id: str) -> Optional[tuple[bool, bool, int]]:
+    def _get_stream_specific_config(self, chat_stream_id: str) -> Optional[tuple[bool, bool, bool]]:
         """
         获取特定聊天流的表达配置
 
@@ -367,7 +396,7 @@ class ExpressionConfig(ConfigBase):
             chat_stream_id: 聊天流ID（哈希值）
 
         Returns:
-            tuple: (是否使用表达, 是否学习表达, 学习间隔)，如果没有配置则返回 None
+            tuple: (是否使用表达, 是否学习表达, 是否启用jargon学习)，如果没有配置则返回 None
         """
         for config_item in self.learning_list:
             if not config_item or len(config_item) < 4:
@@ -392,19 +421,19 @@ class ExpressionConfig(ConfigBase):
             try:
                 use_expression: bool = config_item[1].lower() == "enable"
                 enable_learning: bool = config_item[2].lower() == "enable"
-                learning_intensity: float = float(config_item[3])
-                return use_expression, enable_learning, learning_intensity  # type: ignore
+                enable_jargon_learning: bool = config_item[3].lower() == "enable"
+                return use_expression, enable_learning, enable_jargon_learning  # type: ignore
             except (ValueError, IndexError):
                 continue
 
         return None
 
-    def _get_global_config(self) -> Optional[tuple[bool, bool, int]]:
+    def _get_global_config(self) -> Optional[tuple[bool, bool, bool]]:
         """
         获取全局表达配置
 
         Returns:
-            tuple: (是否使用表达, 是否学习表达, 学习间隔)，如果没有配置则返回 None
+            tuple: (是否使用表达, 是否学习表达, 是否启用jargon学习)，如果没有配置则返回 None
         """
         for config_item in self.learning_list:
             if not config_item or len(config_item) < 4:
@@ -415,8 +444,8 @@ class ExpressionConfig(ConfigBase):
                 try:
                     use_expression: bool = config_item[1].lower() == "enable"
                     enable_learning: bool = config_item[2].lower() == "enable"
-                    learning_intensity = float(config_item[3])
-                    return use_expression, enable_learning, learning_intensity  # type: ignore
+                    enable_jargon_learning: bool = config_item[3].lower() == "enable"
+                    return use_expression, enable_learning, enable_jargon_learning  # type: ignore
                 except (ValueError, IndexError):
                     continue
 
@@ -429,20 +458,6 @@ class ToolConfig(ConfigBase):
 
     enable_tool: bool = False
     """是否在聊天中启用工具"""
-
-
-@dataclass
-class MoodConfig(ConfigBase):
-    """情绪配置类"""
-
-    enable_mood: bool = True
-    """是否启用情绪系统"""
-
-    mood_update_threshold: float = 1
-    """情绪更新阈值,越高，更新越慢"""
-
-    emotion_style: str = "情绪较为稳定，但遭遇特定事件的时候起伏较大"
-    """情感特征，影响情绪的变化情况"""
 
 
 @dataclass
@@ -583,6 +598,35 @@ class TelemetryConfig(ConfigBase):
 
 
 @dataclass
+class WebUIConfig(ConfigBase):
+    """WebUI配置类
+    
+    注意: host 和 port 配置已移至环境变量 WEBUI_HOST 和 WEBUI_PORT
+    """
+
+    enabled: bool = True
+    """是否启用WebUI"""
+
+    mode: Literal["development", "production"] = "production"
+    """运行模式：development(开发) 或 production(生产)"""
+
+    anti_crawler_mode: Literal["false", "strict", "loose", "basic"] = "basic"
+    """防爬虫模式：false(禁用) / strict(严格) / loose(宽松) / basic(基础-只记录不阻止)"""
+
+    allowed_ips: str = "127.0.0.1"
+    """IP白名单（逗号分隔，支持精确IP、CIDR格式和通配符）"""
+
+    trusted_proxies: str = ""
+    """信任的代理IP列表（逗号分隔），只有来自这些IP的X-Forwarded-For才被信任"""
+
+    trust_xff: bool = False
+    """是否启用X-Forwarded-For代理解析（默认false）"""
+
+    secure_cookie: bool = False
+    """是否启用安全Cookie（仅通过HTTPS传输，默认false）"""
+
+
+@dataclass
 class DebugConfig(ConfigBase):
     """调试配置类"""
 
@@ -639,29 +683,29 @@ class ExperimentalConfig(ConfigBase):
 class MaimMessageConfig(ConfigBase):
     """maim_message配置类"""
 
-    use_custom: bool = False
-    """是否使用自定义的maim_message配置"""
-
-    host: str = "127.0.0.1"
-    """主机地址"""
-
-    port: int = 8090
-    """"端口号"""
-
-    mode: Literal["ws", "tcp"] = "ws"
-    """连接模式，支持ws和tcp"""
-
-    use_wss: bool = False
-    """是否使用WSS安全连接"""
-
-    cert_file: str = ""
-    """SSL证书文件路径，仅在use_wss=True时有效"""
-
-    key_file: str = ""
-    """SSL密钥文件路径，仅在use_wss=True时有效"""
-
     auth_token: list[str] = field(default_factory=lambda: [])
-    """认证令牌，用于API验证，为空则不启用验证"""
+    """认证令牌，用于旧版API验证，为空则不启用验证"""
+
+    enable_api_server: bool = False
+    """是否启用额外的新版API Server"""
+
+    api_server_host: str = "0.0.0.0"
+    """新版API Server主机地址"""
+
+    api_server_port: int = 8090
+    """新版API Server端口号"""
+
+    api_server_use_wss: bool = False
+    """新版API Server是否启用WSS"""
+
+    api_server_cert_file: str = ""
+    """新版API Server SSL证书文件路径"""
+
+    api_server_key_file: str = ""
+    """新版API Server SSL密钥文件路径"""
+
+    api_server_allowed_api_keys: list[str] = field(default_factory=lambda: [])
+    """新版API Server允许的API Key列表，为空则允许所有连接"""
 
 
 @dataclass
@@ -707,10 +751,107 @@ class LPMMKnowledgeConfig(ConfigBase):
     embedding_dimension: int = 1024
     """嵌入向量维度，应该与模型的输出维度一致"""
 
+    max_embedding_workers: int = 3
+    """嵌入/抽取并发线程数"""
+
+    embedding_chunk_size: int = 4
+    """每批嵌入的条数"""
+
+    max_synonym_entities: int = 2000
+    """同义边参与的实体数上限，超限则跳过"""
+
+    enable_ppr: bool = True
+    """是否启用PPR，低配机器可关闭"""
+
 
 @dataclass
-class JargonConfig(ConfigBase):
-    """Jargon配置类"""
+class DreamConfig(ConfigBase):
+    """Dream配置类"""
 
-    all_global: bool = False
-    """是否将所有新增的jargon项目默认为全局（is_global=True），chat_id记录第一次存储时的id"""
+    interval_minutes: int = 30
+    """做梦时间间隔（分钟），默认30分钟"""
+
+    max_iterations: int = 20
+    """做梦最大轮次，默认20轮"""
+
+    first_delay_seconds: int = 60
+    """程序启动后首次做梦前的延迟时间（秒），默认60秒"""
+
+    dream_send: str = ""
+    """
+    做梦结果推送目标，格式为 "platform:user_id"
+    例如: "qq:123456" 表示在做梦结束后，将梦境文本额外发送给该QQ私聊用户。
+    为空字符串时不推送。
+    """
+
+    dream_time_ranges: list[str] = field(default_factory=lambda: [])
+    """
+    做梦时间段配置列表，格式：["HH:MM-HH:MM", ...]
+    如果列表为空，则表示全天允许做梦。
+    如果配置了时间段，则只有在这些时间段内才会实际执行做梦流程。
+    时间段外，调度器仍会按间隔检查，但不会进入做梦流程。
+    
+    示例:
+    [
+        "09:00-22:00",      # 白天允许做梦
+        "23:00-02:00",      # 跨夜时间段（23:00到次日02:00）
+    ]
+    
+    支持跨夜区间，例如 "23:00-02:00" 表示从23:00到次日02:00。
+    """
+
+    def _now_minutes(self) -> int:
+        """返回本地时间的分钟数(0-1439)。"""
+        lt = time.localtime()
+        return lt.tm_hour * 60 + lt.tm_min
+
+    def _parse_range(self, range_str: str) -> Optional[tuple[int, int]]:
+        """解析 "HH:MM-HH:MM" 到 (start_min, end_min)。"""
+        try:
+            start_str, end_str = [s.strip() for s in range_str.split("-")]
+            sh, sm = [int(x) for x in start_str.split(":")]
+            eh, em = [int(x) for x in end_str.split(":")]
+            return sh * 60 + sm, eh * 60 + em
+        except Exception:
+            return None
+
+    def _in_range(self, now_min: int, start_min: int, end_min: int) -> bool:
+        """
+        判断 now_min 是否在 [start_min, end_min] 区间内。
+        支持跨夜：如果 start > end，则表示跨越午夜。
+        """
+        if start_min <= end_min:
+            return start_min <= now_min <= end_min
+        # 跨夜：例如 23:00-02:00
+        return now_min >= start_min or now_min <= end_min
+
+    def is_in_dream_time(self) -> bool:
+        """
+        检查当前时间是否在允许做梦的时间段内。
+        如果 dream_time_ranges 为空，则返回 True（全天允许）。
+        """
+        if not self.dream_time_ranges:
+            return True
+
+        now_min = self._now_minutes()
+
+        for time_range in self.dream_time_ranges:
+            if not isinstance(time_range, str):
+                continue
+            parsed = self._parse_range(time_range)
+            if not parsed:
+                continue
+            start_min, end_min = parsed
+            if self._in_range(now_min, start_min, end_min):
+                return True
+
+        return False
+
+    def __post_init__(self):
+        """验证配置值"""
+        if self.interval_minutes < 1:
+            raise ValueError(f"interval_minutes 必须至少为1，当前值: {self.interval_minutes}")
+        if self.max_iterations < 1:
+            raise ValueError(f"max_iterations 必须至少为1，当前值: {self.max_iterations}")
+        if self.first_delay_seconds < 0:
+            raise ValueError(f"first_delay_seconds 不能为负数，当前值: {self.first_delay_seconds}")
