@@ -76,6 +76,7 @@ class PrivateReplyer:
         reply_message: Optional[DatabaseMessages] = None,
         reply_time_point: Optional[float] = time.time(),
         unknown_words: Optional[List[str]] = None,
+        log_reply: bool = True,
     ) -> Tuple[bool, LLMGenerationDataModel]:
         # sourcery skip: merge-nested-ifs
         """
