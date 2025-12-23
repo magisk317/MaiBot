@@ -31,6 +31,7 @@ from src.person_info.person_info import Person
 from src.plugin_system.base.component_types import ActionInfo, EventType
 from src.plugin_system.apis import llm_api
 
+from src.chat.logger.plan_reply_logger import PlanReplyLogger
 from src.chat.replyer.prompt.lpmm_prompt import init_lpmm_prompt
 from src.chat.replyer.prompt.replyer_prompt import init_replyer_prompt
 from src.chat.replyer.prompt.rewrite_prompt import init_rewrite_prompt
@@ -74,6 +75,7 @@ class DefaultReplyer:
         reply_time_point: Optional[float] = time.time(),
         think_level: int = 1,
         unknown_words: Optional[List[str]] = None,
+        log_reply: bool = True,
     ) -> Tuple[bool, LLMGenerationDataModel]:
         # sourcery skip: merge-nested-ifs
         """
@@ -92,6 +94,9 @@ class DefaultReplyer:
             Tuple[bool, Optional[Dict[str, Any]], Optional[str]]: (是否成功, 生成的回复, 使用的prompt)
         """
 
+        overall_start = time.perf_counter()
+        prompt_duration_ms: Optional[float] = None
+        llm_duration_ms: Optional[float] = None
         prompt = None
         selected_expressions: Optional[List[int]] = None
         llm_response = LLMGenerationDataModel()
@@ -101,6 +106,7 @@ class DefaultReplyer:
             # 3. 构建 Prompt
             timing_logs = []
             almost_zero_str = ""
+            prompt_start = time.perf_counter()
             with Timer("构建Prompt", {}):  # 内部计时器，可选保留
                 prompt, selected_expressions, timing_logs, almost_zero_str = await self.build_prompt_reply_context(
                     extra_info=extra_info,
@@ -113,11 +119,37 @@ class DefaultReplyer:
                     think_level=think_level,
                     unknown_words=unknown_words,
                 )
+            prompt_duration_ms = (time.perf_counter() - prompt_start) * 1000
             llm_response.prompt = prompt
             llm_response.selected_expressions = selected_expressions
+            llm_response.timing = {
+                "prompt_ms": round(prompt_duration_ms or 0.0, 2),
+                "overall_ms": None,  # 占位，稍后写入
+            }
+            llm_response.timing_logs = timing_logs
+            llm_response.timing["timing_logs"] = timing_logs
 
             if not prompt:
                 logger.warning("构建prompt失败，跳过回复生成")
+                llm_response.timing["overall_ms"] = round((time.perf_counter() - overall_start) * 1000, 2)
+                llm_response.timing["almost_zero"] = almost_zero_str
+                llm_response.timing["timing_logs"] = timing_logs
+                if log_reply:
+                    try:
+                        PlanReplyLogger.log_reply(
+                            chat_id=self.chat_stream.stream_id,
+                            prompt="",
+                            output=None,
+                            processed_output=None,
+                            model=None,
+                            timing=llm_response.timing,
+                            reasoning=None,
+                            think_level=think_level,
+                            error="build_prompt_failed",
+                            success=False,
+                        )
+                    except Exception:
+                        logger.exception("记录reply日志失败")
                 return False, llm_response
             from src.plugin_system.core.events_manager import events_manager
 
@@ -137,7 +169,9 @@ class DefaultReplyer:
             model_name = "unknown_model"
 
             try:
+                llm_start = time.perf_counter()
                 content, reasoning_content, model_name, tool_call = await self.llm_generate_content(prompt)
+                llm_duration_ms = (time.perf_counter() - llm_start) * 1000
                 # logger.debug(f"replyer生成内容: {content}")
 
                 # 统一输出所有日志信息，使用try-except确保即使某个步骤出错也能输出
@@ -161,6 +195,26 @@ class DefaultReplyer:
                 llm_response.reasoning = reasoning_content
                 llm_response.model = model_name
                 llm_response.tool_calls = tool_call
+                llm_response.timing["llm_ms"] = round(llm_duration_ms or 0.0, 2)
+                llm_response.timing["overall_ms"] = round((time.perf_counter() - overall_start) * 1000, 2)
+                llm_response.timing_logs = timing_logs
+                llm_response.timing["timing_logs"] = timing_logs
+                llm_response.timing["almost_zero"] = almost_zero_str
+                try:
+                    if log_reply:
+                        PlanReplyLogger.log_reply(
+                            chat_id=self.chat_stream.stream_id,
+                            prompt=prompt,
+                            output=content,
+                            processed_output=None,
+                            model=model_name,
+                            timing=llm_response.timing,
+                            reasoning=reasoning_content,
+                            think_level=think_level,
+                            success=True,
+                        )
+                except Exception:
+                    logger.exception("记录reply日志失败")
                 continue_flag, modified_message = await events_manager.handle_mai_events(
                     EventType.AFTER_LLM, None, prompt, llm_response, stream_id=stream_id
                 )
@@ -194,6 +248,27 @@ class DefaultReplyer:
                 except Exception as log_e:
                     logger.warning(f"输出日志时出错: {log_e}")
 
+                llm_response.timing["llm_ms"] = round(llm_duration_ms or 0.0, 2)
+                llm_response.timing["overall_ms"] = round((time.perf_counter() - overall_start) * 1000, 2)
+                llm_response.timing_logs = timing_logs
+                llm_response.timing["timing_logs"] = timing_logs
+                llm_response.timing["almost_zero"] = almost_zero_str
+                if log_reply:
+                    try:
+                        PlanReplyLogger.log_reply(
+                            chat_id=self.chat_stream.stream_id,
+                            prompt=prompt or "",
+                            output=None,
+                            processed_output=None,
+                            model=model_name,
+                            timing=llm_response.timing,
+                            reasoning=None,
+                            think_level=think_level,
+                            error=str(llm_e),
+                            success=False,
+                        )
+                    except Exception:
+                        logger.exception("记录reply日志失败")
                 return False, llm_response  # LLM 调用失败则无法生成回复
 
             return True, llm_response

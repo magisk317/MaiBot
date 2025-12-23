@@ -20,6 +20,7 @@ from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.utils import process_llm_response
 from src.chat.replyer.replyer_manager import replyer_manager
 from src.plugin_system.base.component_types import ActionInfo
+from src.chat.logger.plan_reply_logger import PlanReplyLogger
 
 if TYPE_CHECKING:
     from src.common.data_models.info_data_model import ActionPlannerInfo
@@ -162,15 +163,36 @@ async def generate_reply(
             from_plugin=from_plugin,
             stream_id=chat_stream.stream_id if chat_stream else chat_id,
             reply_time_point=reply_time_point,
+            log_reply=False,
         )
         if not success:
             logger.warning("[GeneratorAPI] 回复生成失败")
             return False, None
         reply_set: Optional[ReplySetModel] = None
         if content := llm_response.content:
-            reply_set = process_human_text(content, enable_splitter, enable_chinese_typo)
+            processed_response = process_llm_response(content, enable_splitter, enable_chinese_typo)
+            llm_response.processed_output = processed_response
+            reply_set = ReplySetModel()
+            for text in processed_response:
+                reply_set.add_text_content(text)
         llm_response.reply_set = reply_set
         logger.debug(f"[GeneratorAPI] 回复生成成功，生成了 {len(reply_set) if reply_set else 0} 个回复项")
+
+        # 统一在这里记录最终回复日志（包含分割后的 processed_output）
+        try:
+            PlanReplyLogger.log_reply(
+                chat_id=chat_stream.stream_id if chat_stream else (chat_id or ""),
+                prompt=llm_response.prompt or "",
+                output=llm_response.content,
+                processed_output=llm_response.processed_output,
+                model=llm_response.model,
+                timing=llm_response.timing,
+                reasoning=llm_response.reasoning,
+                think_level=think_level,
+                success=True,
+            )
+        except Exception:
+            logger.exception("[GeneratorAPI] 记录reply日志失败")
 
         return success, llm_response
 
