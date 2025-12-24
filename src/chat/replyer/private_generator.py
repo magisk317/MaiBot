@@ -110,6 +110,7 @@ class PrivateReplyer:
                     enable_tool=enable_tool,
                     reply_message=reply_message,
                     reply_reason=reply_reason,
+                    unknown_words=unknown_words,
                 )
             llm_response.prompt = prompt
             llm_response.selected_expressions = selected_expressions
@@ -611,6 +612,7 @@ class PrivateReplyer:
         available_actions: Optional[Dict[str, ActionInfo]] = None,
         chosen_actions: Optional[List[ActionPlannerInfo]] = None,
         enable_tool: bool = True,
+        unknown_words: Optional[List[str]] = None,
     ) -> Tuple[str, List[int]]:
         """
         构建回复器上下文
@@ -709,12 +711,24 @@ class PrivateReplyer:
         else:
             jargon_coroutine = self._build_disabled_jargon_explanation()
 
+        # 从 chosen_actions 中提取 question（仅在 reply 动作中）
+        question = None
+        if chosen_actions:
+            for action_info in chosen_actions:
+                if action_info.action_type == "reply" and isinstance(action_info.action_data, dict):
+                    q = action_info.action_data.get("question")
+                    if isinstance(q, str):
+                        cleaned_q = q.strip()
+                        if cleaned_q:
+                            question = cleaned_q
+                            break
+
         # 并行执行九个构建任务（包括黑话解释，可配置关闭）
         task_results = await asyncio.gather(
             self._time_and_run_task(
                 self.build_expression_habits(chat_talking_prompt_short, target, reply_reason), "expression_habits"
             ),
-            self._time_and_run_task(self.build_relation_info(chat_talking_prompt_short, sender), "relation_info"),
+            # self._time_and_run_task(self.build_relation_info(chat_talking_prompt_short, sender), "relation_info"),
             self._time_and_run_task(
                 self.build_tool_info(chat_talking_prompt_short, sender, target, enable_tool=enable_tool), "tool_info"
             ),
@@ -723,7 +737,7 @@ class PrivateReplyer:
             self._time_and_run_task(self.build_personality_prompt(), "personality_prompt"),
             self._time_and_run_task(
                 build_memory_retrieval_prompt(
-                    chat_talking_prompt_short, sender, target, self.chat_stream, self.tool_executor
+                    chat_talking_prompt_short, sender, target, self.chat_stream, think_level=1, unknown_words=unknown_words, question=question
                 ),
                 "memory_retrieval",
             ),

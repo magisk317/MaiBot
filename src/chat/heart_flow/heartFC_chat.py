@@ -687,7 +687,7 @@ class HeartFChatting:
                     return {
                         "action_type": "reply",
                         "success": True,
-                        "result": f"你回复内容{reply_text}",
+                        "result": f"你使用reply动作，对' {action_planner_info.action_message.processed_plain_text} '这句话进行了回复，回复内容为: '{reply_text}'",
                         "loop_info": loop_info,
                     }
 

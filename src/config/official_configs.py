@@ -260,11 +260,31 @@ class MemoryConfig(ConfigBase):
     agent_timeout_seconds: float = 120.0
     """Agent超时时间（秒）"""
 
-    enable_jargon_detection: bool = True
-    """记忆检索过程中是否启用黑话识别"""
-
     global_memory: bool = False
     """是否允许记忆检索在聊天记录中进行全局查询（忽略当前chat_id，仅对 search_chat_history 等工具生效）"""
+
+    global_memory_blacklist: list[str] = field(default_factory=lambda: [])
+    """
+    全局记忆黑名单，当启用全局记忆时，不将特定聊天流纳入检索
+    格式: ["platform:id:type", ...]
+    
+    示例:
+    [
+        "qq:1919810:private",  # 排除特定私聊
+        "qq:114514:group",     # 排除特定群聊
+    ]
+    
+    说明:
+    - 当启用全局记忆时，黑名单中的聊天流不会被检索
+    - 当在黑名单中的聊天流进行查询时，仅使用该聊天流的本地记忆
+    """
+
+    planner_question: bool = True
+    """
+    是否使用 Planner 提供的 question 作为记忆检索问题
+    - True: 当 Planner 在 reply 动作中提供了 question 时，直接使用该问题进行记忆检索，跳过 LLM 生成问题的步骤
+    - False: 沿用旧模式，使用 LLM 生成问题
+    """
 
     def __post_init__(self):
         """验证配置值"""

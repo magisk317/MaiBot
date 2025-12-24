@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.5"
+version = "7.2.8"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 # 如果你想要修改配置文件，请递增version的值
@@ -122,10 +122,13 @@ talk_value_rules = [
 ]
 
 [memory]
-max_agent_iterations = 3 # 记忆思考深度（最低为1）
-agent_timeout_seconds = 200.0 # 最长回忆时间（秒）
-enable_jargon_detection = true # 记忆检索过程中是否启用黑话识别
+max_agent_iterations = 5 # 记忆思考深度（最低为1）
+agent_timeout_seconds = 180.0 # 最长回忆时间（秒）
 global_memory = false # 是否允许记忆检索进行全局查询
+global_memory_blacklist = [
+    
+] # 全局记忆黑名单，当启用全局记忆时，不将特定聊天流纳入检索。格式: ["platform:id:type", ...]，例如: ["qq:1919810:private", "qq:114514:group"]
+planner_question = true # 是否使用 Planner 提供的 question 作为记忆检索问题。开启后，当 Planner 在 reply 动作中提供了 question 时，直接使用该问题进行记忆检索，跳过 LLM 生成问题的步骤；关闭后沿用旧模式，使用 LLM 生成问题
 
 [dream]
 interval_minutes = 60 # 做梦时间间隔（分钟），默认30分钟
