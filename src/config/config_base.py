@@ -120,6 +120,15 @@ class ConfigBase:
         
         if is_union_type:
             union_args = field_type_args if field_type_args else get_args(field_type)
+            
+            # 安全检查：只允许 T | None 形式的 Optional 类型，禁止 float | str 这种多类型 Union
+            non_none_types = [arg for arg in union_args if arg is not type(None)]
+            if len(non_none_types) > 1:
+                raise TypeError(
+                    f"配置字段不支持多类型 Union（如 float | str），只支持 Optional 类型（如 float | None）。"
+                    f"当前类型: {field_type}"
+                )
+            
             # 如果值是 None 且 None 在 Union 中，直接返回
             if value is None and type(None) in union_args:
                 return None
