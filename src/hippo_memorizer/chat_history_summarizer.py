@@ -848,11 +848,7 @@ class ChatHistorySummarizer:
         )
 
         try:
-            response, _ = await self.summarizer_llm.generate_response_async(
-                prompt=prompt,
-                temperature=0.3,
-                max_tokens=500,
-            )
+            response, _ = await self.summarizer_llm.generate_response_async(prompt=prompt)
 
             # 解析JSON响应
             json_str = response.strip()

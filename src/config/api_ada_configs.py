@@ -132,9 +132,6 @@ class ModelTaskConfig(ConfigBase):
     lpmm_rdf_build: TaskConfig
     """LPMM RDF构建模型配置"""
 
-    lpmm_qa: TaskConfig
-    """LPMM问答模型配置"""
-
     def get_task(self, task_name: str) -> TaskConfig:
         """获取指定任务的配置"""
         if hasattr(self, task_name):
