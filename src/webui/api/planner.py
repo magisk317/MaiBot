@@ -33,6 +33,7 @@ class PlanLogSummary(BaseModel):
     timestamp: float
     filename: str
     action_count: int
+    action_types: List[str]  # 动作类型列表
     total_plan_ms: float
     llm_duration_ms: float
     reasoning_preview: str
@@ -126,11 +127,13 @@ async def get_planner_overview():
 async def get_chat_plan_logs(
     chat_id: str,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100)
+    page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None, description="搜索关键词，匹配提示词内容")
 ):
     """
     获取指定聊天的规划日志列表（分页）
     需要读取文件内容获取摘要信息
+    支持搜索提示词内容
     """
     chat_dir = PLAN_LOG_DIR / chat_id
     if not chat_dir.exists():
@@ -141,6 +144,21 @@ async def get_chat_plan_logs(
     # 先获取所有文件并按时间戳排序
     json_files = list(chat_dir.glob("*.json"))
     json_files.sort(key=lambda f: parse_timestamp_from_filename(f.name), reverse=True)
+    
+    # 如果有搜索关键词，需要过滤文件
+    if search:
+        search_lower = search.lower()
+        filtered_files = []
+        for log_file in json_files:
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    prompt = data.get('prompt', '')
+                    if search_lower in prompt.lower():
+                        filtered_files.append(log_file)
+            except Exception:
+                continue
+        json_files = filtered_files
     
     total = len(json_files)
     
@@ -154,11 +172,14 @@ async def get_chat_plan_logs(
             with open(log_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 reasoning = data.get('reasoning', '')
+                actions = data.get('actions', [])
+                action_types = [a.get('action_type', '') for a in actions if a.get('action_type')]
                 logs.append(PlanLogSummary(
                     chat_id=data.get('chat_id', chat_id),
                     timestamp=data.get('timestamp', parse_timestamp_from_filename(log_file.name)),
                     filename=log_file.name,
-                    action_count=len(data.get('actions', [])),
+                    action_count=len(actions),
+                    action_types=action_types,
                     total_plan_ms=data.get('timing', {}).get('total_plan_ms', 0),
                     llm_duration_ms=data.get('timing', {}).get('llm_duration_ms', 0),
                     reasoning_preview=reasoning[:100] if reasoning else ''
@@ -170,6 +191,7 @@ async def get_chat_plan_logs(
                 timestamp=parse_timestamp_from_filename(log_file.name),
                 filename=log_file.name,
                 action_count=0,
+                action_types=[],
                 total_plan_ms=0,
                 llm_duration_ms=0,
                 reasoning_preview='[读取失败]'

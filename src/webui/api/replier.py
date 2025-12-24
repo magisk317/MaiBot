@@ -130,11 +130,13 @@ async def get_replier_overview():
 async def get_chat_reply_logs(
     chat_id: str,
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100)
+    page_size: int = Query(20, ge=1, le=100),
+    search: Optional[str] = Query(None, description="搜索关键词，匹配提示词内容")
 ):
     """
     获取指定聊天的回复日志列表（分页）
     需要读取文件内容获取摘要信息
+    支持搜索提示词内容
     """
     chat_dir = REPLY_LOG_DIR / chat_id
     if not chat_dir.exists():
@@ -145,6 +147,21 @@ async def get_chat_reply_logs(
     # 先获取所有文件并按时间戳排序
     json_files = list(chat_dir.glob("*.json"))
     json_files.sort(key=lambda f: parse_timestamp_from_filename(f.name), reverse=True)
+    
+    # 如果有搜索关键词，需要过滤文件
+    if search:
+        search_lower = search.lower()
+        filtered_files = []
+        for log_file in json_files:
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    prompt = data.get('prompt', '')
+                    if search_lower in prompt.lower():
+                        filtered_files.append(log_file)
+            except Exception:
+                continue
+        json_files = filtered_files
     
     total = len(json_files)
     
