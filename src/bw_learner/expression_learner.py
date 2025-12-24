@@ -89,7 +89,7 @@ class ExpressionLearner:
             model_set=model_config.model_task_config.utils, request_type="expression.learner"
         )
         self.summary_model: LLMRequest = LLMRequest(
-            model_set=model_config.model_task_config.utils_small, request_type="expression.summary"
+            model_set=model_config.model_task_config.utils, request_type="expression.summary"
         )
         self.chat_id = chat_id
         self.chat_stream = get_chat_manager().get_stream(chat_id)

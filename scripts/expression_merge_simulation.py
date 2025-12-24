@@ -226,7 +226,7 @@ async def simulate_merge(
     if use_llm:
         try:
             summary_model = LLMRequest(
-                model_set=model_config.model_task_config.utils_small,
+                model_set=model_config.model_task_config.tool_use,
                 request_type="expression.summary"
             )
             print("✅ LLM 模型已初始化，将进行实际总结")

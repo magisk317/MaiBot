@@ -774,7 +774,7 @@ class PrivateReplyer:
         expression_habits_block, selected_expressions = results_dict["expression_habits"]
         expression_habits_block: str
         selected_expressions: List[int]
-        relation_info: str = results_dict["relation_info"]
+        relation_info: str = results_dict.get("relation_info") or ""
         tool_info: str = results_dict["tool_info"]
         prompt_info: str = results_dict["prompt_info"]  # 直接使用格式化后的结果
         actions_info: str = results_dict["actions_info"]

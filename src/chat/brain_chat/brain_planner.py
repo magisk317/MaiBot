@@ -444,7 +444,7 @@ class BrainPlanner:
             if action_info.activation_type == ActionActivationType.NEVER:
                 logger.debug(f"{self.log_prefix}动作 {action_name} 设置为 NEVER 激活类型，跳过")
                 continue
-            elif action_info.activation_type in [ActionActivationType.LLM_JUDGE, ActionActivationType.ALWAYS]:
+            elif action_info.activation_type == ActionActivationType.ALWAYS:
                 filtered_actions[action_name] = action_info
             elif action_info.activation_type == ActionActivationType.RANDOM:
                 if random.random() < action_info.random_activation_probability:

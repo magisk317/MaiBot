@@ -45,7 +45,7 @@ def init_prompt():
 class ExpressionSelector:
     def __init__(self):
         self.llm_model = LLMRequest(
-            model_set=model_config.model_task_config.utils_small, request_type="expression.selector"
+            model_set=model_config.model_task_config.tool_use, request_type="expression.selector"
         )
 
     def can_use_expression_for_chat(self, chat_id: str) -> bool:
