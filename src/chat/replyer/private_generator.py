@@ -811,6 +811,17 @@ class PrivateReplyer:
         chat_prompt_content = self.get_chat_prompt_for_chat(chat_id)
         chat_prompt_block = f"{chat_prompt_content}\n" if chat_prompt_content else ""
 
+        # 根据配置构建最终的 reply_style：支持 multiple_reply_style 按概率随机替换
+        reply_style = global_config.personality.reply_style
+        multi_styles = getattr(global_config.personality, "multiple_reply_style", None) or []
+        multi_prob = getattr(global_config.personality, "multiple_probability", 0.0) or 0.0
+        if multi_styles and multi_prob > 0 and random.random() < multi_prob:
+            try:
+                reply_style = random.choice(list(multi_styles))
+            except Exception:
+                # 兜底：即使 multiple_reply_style 配置异常也不影响正常回复
+                reply_style = global_config.personality.reply_style
+
         if global_config.bot.qq_account == user_id and platform == global_config.bot.platform:
             return await global_prompt_manager.format_prompt(
                 "private_replyer_self_prompt",
@@ -827,7 +838,7 @@ class PrivateReplyer:
                 target=target,
                 reason=reply_reason,
                 sender_name=sender,
-                reply_style=global_config.personality.reply_style,
+                reply_style=reply_style,
                 keywords_reaction_prompt=keywords_reaction_prompt,
                 moderation_prompt=moderation_prompt_block,
                 memory_retrieval=memory_retrieval,
@@ -847,7 +858,7 @@ class PrivateReplyer:
                 jargon_explanation=jargon_explanation,
                 time_block=time_block,
                 reply_target_block=reply_target_block,
-                reply_style=global_config.personality.reply_style,
+                reply_style=reply_style,
                 keywords_reaction_prompt=keywords_reaction_prompt,
                 moderation_prompt=moderation_prompt_block,
                 sender_name=sender,
@@ -932,6 +943,17 @@ class PrivateReplyer:
 
         template_name = "default_expressor_prompt"
 
+        # 根据配置构建最终的 reply_style：支持 multiple_reply_style 按概率随机替换
+        reply_style = global_config.personality.reply_style
+        multi_styles = getattr(global_config.personality, "multiple_reply_style", None) or []
+        multi_prob = getattr(global_config.personality, "multiple_probability", 0.0) or 0.0
+        if multi_styles and multi_prob > 0 and random.random() < multi_prob:
+            try:
+                reply_style = random.choice(list(multi_styles))
+            except Exception:
+                # 兜底：即使 multiple_reply_style 配置异常也不影响正常回复
+                reply_style = global_config.personality.reply_style
+
         return await global_prompt_manager.format_prompt(
             template_name,
             expression_habits_block=expression_habits_block,
@@ -944,7 +966,7 @@ class PrivateReplyer:
             reply_target_block=reply_target_block,
             raw_reply=raw_reply,
             reason=reason,
-            reply_style=global_config.personality.reply_style,
+            reply_style=reply_style,
             keywords_reaction_prompt=keywords_reaction_prompt,
             moderation_prompt=moderation_prompt_block,
         )
