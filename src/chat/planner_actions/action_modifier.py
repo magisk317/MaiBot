@@ -69,6 +69,7 @@ class ActionModifier:
             chat_id=self.chat_stream.stream_id,
             timestamp=time.time(),
             limit=min(int(global_config.chat.max_context_size * 0.33), 10),
+            filter_intercept_message_level=1,
         )
 
         chat_content = build_readable_messages(

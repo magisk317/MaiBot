@@ -60,6 +60,12 @@ class ModelInfo(ConfigBase):
     price_out: float = field(default=0.0)
     """每M token输出价格"""
 
+    temperature: float | None = field(default=None)
+    """模型级别温度（可选），会覆盖任务配置中的温度"""
+
+    max_tokens: int | None = field(default=None)
+    """模型级别最大token数（可选），会覆盖任务配置中的max_tokens"""
+
     force_stream_mode: bool = field(default=False)
     """是否强制使用流式输出模式"""
 
@@ -87,6 +93,9 @@ class TaskConfig(ConfigBase):
 
     temperature: float = 0.3
     """模型温度"""
+
+    slow_threshold: float = 15.0
+    """慢请求阈值（秒），超过此值会输出警告日志"""
 
 
 @dataclass
