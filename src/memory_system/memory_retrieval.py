@@ -521,6 +521,7 @@ async def _react_agent_solve_question(
                 logger.warning(f"{react_log_prefix}第 {iteration + 1} 次迭代 无工具调用且无响应")
                 step["observations"] = ["无响应且无工具调用"]
             thinking_steps.append(step)
+            iteration += 1  # 在continue之前增加迭代计数，避免跳过iteration += 1
             continue
 
         # 处理工具调用
@@ -1021,6 +1022,11 @@ async def _process_single_question(
     Returns:
         Optional[str]: 如果找到答案，返回格式化的结果字符串，否则返回None
     """
+    # 如果question为空或None，直接返回None，不进行查询
+    if not question or not question.strip():
+        logger.debug("问题为空，跳过查询")
+        return None
+    
     # logger.info(f"开始处理问题: {question}")
 
     _cleanup_stale_not_found_thinking_back()
@@ -1116,15 +1122,14 @@ async def build_memory_retrieval_prompt(
             recent_query_history = "最近没有查询记录。"
 
         # 第一步：生成问题或使用 Planner 提供的问题
-        questions = []
+        single_question: Optional[str] = None
         
         # 如果 planner_question 配置开启，只使用 Planner 提供的问题，不使用旧模式
         if global_config.memory.planner_question:
             if question and isinstance(question, str) and question.strip():
                 # 清理和验证 question
-                cleaned_question = question.strip()
-                questions = [cleaned_question]
-                logger.info(f"{log_prefix}使用 Planner 提供的 question: {cleaned_question}")
+                single_question = question.strip()
+                logger.info(f"{log_prefix}使用 Planner 提供的 question: {single_question}")
             else:
                 # planner_question 开启但没有提供 question，跳过记忆检索
                 logger.debug(f"{log_prefix}planner_question 已开启但未提供 question，跳过记忆检索")
@@ -1157,10 +1162,11 @@ async def build_memory_retrieval_prompt(
                 logger.error(f"{log_prefix}LLM生成问题失败: {response}")
                 return ""
 
-            # 解析概念列表和问题列表
+            # 解析概念列表和问题列表，只取第一个问题
             _, questions = parse_questions_json(response)
-            if questions:
-                logger.info(f"{log_prefix}解析到 {len(questions)} 个问题: {questions}")
+            if questions and len(questions) > 0:
+                single_question = questions[0].strip()
+                logger.info(f"{log_prefix}解析到问题: {single_question}")
 
         # 初始阶段：使用 Planner 提供的 unknown_words 进行检索（如果提供）
         initial_info = ""
@@ -1183,13 +1189,13 @@ async def build_memory_retrieval_prompt(
                 else:
                     logger.debug(f"{log_prefix}unknown_words 检索未找到任何结果")
 
-        if not questions:
+        if not single_question:
             logger.debug(f"{log_prefix}模型认为不需要检索记忆或解析失败，不返回任何查询结果")
             end_time = time.time()
             logger.info(f"{log_prefix}无当次查询，不返回任何结果，耗时: {(end_time - start_time):.3f}秒")
             return ""
 
-        # 第二步：并行处理所有问题（使用配置的最大迭代次数和超时时间）
+        # 第二步：处理问题（使用配置的最大迭代次数和超时时间）
         base_max_iterations = global_config.memory.max_agent_iterations
         # 根据think_level调整迭代次数：think_level=1时不变，think_level=0时减半
         if think_level == 0:
@@ -1198,31 +1204,21 @@ async def build_memory_retrieval_prompt(
             max_iterations = base_max_iterations
         timeout_seconds = global_config.memory.agent_timeout_seconds
         logger.debug(
-            f"{log_prefix}问题数量: {len(questions)}，think_level={think_level}，设置最大迭代次数: {max_iterations}（基础值: {base_max_iterations}），超时时间: {timeout_seconds}秒"
+            f"{log_prefix}问题: {single_question}，think_level={think_level}，设置最大迭代次数: {max_iterations}（基础值: {base_max_iterations}），超时时间: {timeout_seconds}秒"
         )
 
-        # 并行处理所有问题
-        question_tasks = [
-            _process_single_question(
-                question=question,
+        # 处理单个问题
+        try:
+            result = await _process_single_question(
+                question=single_question,
                 chat_id=chat_id,
                 context=message,
                 initial_info=initial_info,
                 max_iterations=max_iterations,
             )
-            for question in questions
-        ]
-
-        # 并行执行所有查询任务
-        results = await asyncio.gather(*question_tasks, return_exceptions=True)
-
-        # 收集所有有效结果
-        question_results: List[str] = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"{log_prefix}处理问题 '{questions[i]}' 时发生异常: {result}")
-            elif result is not None:
-                question_results.append(result)
+        except Exception as e:
+            logger.error(f"{log_prefix}处理问题 '{single_question}' 时发生异常: {e}")
+            result = None
 
         # 获取最近10分钟内已找到答案的缓存记录
         cached_answers = _get_recent_found_answers(chat_id, time_window_seconds=600.0)
@@ -1231,29 +1227,29 @@ async def build_memory_retrieval_prompt(
         all_results = []
 
         # 先添加当前查询的结果
-        current_questions = set()
-        for result in question_results:
+        current_question = None
+        if result:
+            all_results.append(result)
             # 提取问题（格式为 "问题：xxx\n答案：xxx"）
             if result.startswith("问题："):
                 question_end = result.find("\n答案：")
                 if question_end != -1:
-                    current_questions.add(result[4:question_end])
-            all_results.append(result)
+                    current_question = result[4:question_end]
 
-        # 添加缓存答案（排除当前查询中已存在的问题）
+        # 添加缓存答案（排除当前查询的问题）
         for cached_answer in cached_answers:
             if cached_answer.startswith("问题："):
                 question_end = cached_answer.find("\n答案：")
                 if question_end != -1:
                     cached_question = cached_answer[4:question_end]
-                    if cached_question not in current_questions:
+                    if cached_question != current_question:
                         all_results.append(cached_answer)
 
         end_time = time.time()
 
         if all_results:
             retrieved_memory = "\n\n".join(all_results)
-            current_count = len(question_results)
+            current_count = 1 if result else 0
             cached_count = len(all_results) - current_count
             logger.info(
                 f"{log_prefix}记忆检索成功，耗时: {(end_time - start_time):.3f}秒，"
@@ -1261,7 +1257,7 @@ async def build_memory_retrieval_prompt(
             )
             return f"你回忆起了以下信息：\n{retrieved_memory}\n如果与回复内容相关，可以参考这些回忆的信息。\n"
         else:
-            logger.debug(f"{log_prefix}所有问题均未找到答案，且无缓存答案")
+            logger.debug(f"{log_prefix}问题未找到答案，且无缓存答案")
             return ""
 
     except Exception as e:
