@@ -45,7 +45,7 @@ class JargonExplainer:
     def __init__(self, chat_id: str) -> None:
         self.chat_id = chat_id
         self.llm = LLMRequest(
-            model_set=model_config.model_task_config.utils,
+            model_set=model_config.model_task_config.tool_use,
             request_type="jargon.explain",
         )
 

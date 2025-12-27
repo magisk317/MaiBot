@@ -92,7 +92,7 @@ class ExpressionLearner:
             model_set=model_config.model_task_config.utils, request_type="expression.learner"
         )
         self.summary_model: LLMRequest = LLMRequest(
-            model_set=model_config.model_task_config.utils, request_type="expression.summary"
+            model_set=model_config.model_task_config.tool_use, request_type="expression.summary"
         )
         self.check_model: Optional[LLMRequest] = None  # 检查用的 LLM 实例，延迟初始化
         self.chat_id = chat_id
@@ -141,6 +141,17 @@ class ExpressionLearner:
         expressions: List[Tuple[str, str, str]]
         jargon_entries: List[Tuple[str, str]]  # (content, source_id)
         expressions, jargon_entries = parse_expression_response(response)
+
+        # 从缓存中检查 jargon 是否出现在 messages 中
+        cached_jargon_entries = self._check_cached_jargons_in_messages(random_msg)
+        if cached_jargon_entries:
+            # 合并缓存中的 jargon 条目（去重：如果 content 已存在则跳过）
+            existing_contents = {content for content, _ in jargon_entries}
+            for content, source_id in cached_jargon_entries:
+                if content not in existing_contents:
+                    jargon_entries.append((content, source_id))
+                    existing_contents.add(content)
+                    logger.info(f"从缓存中检查到黑话: {content}")
 
         # 检查表达方式数量，如果超过10个则放弃本次表达学习
         if len(expressions) > 20:
@@ -482,6 +493,68 @@ class ExpressionLearner:
         except Exception as e:
             logger.error(f"立即检查表达方式失败 [ID: {expr_obj.id}]: {e}", exc_info=True)
             # 检查失败时，保持 checked=False，等待后续自动检查任务处理
+
+    def _check_cached_jargons_in_messages(self, messages: List[Any]) -> List[Tuple[str, str]]:
+        """
+        检查缓存中的 jargon 是否出现在 messages 中
+        
+        Args:
+            messages: 消息列表
+            
+        Returns:
+            List[Tuple[str, str]]: 匹配到的黑话条目列表，每个元素是 (content, source_id)
+        """
+        if not messages:
+            return []
+        
+        # 获取 jargon_miner 实例
+        jargon_miner = miner_manager.get_miner(self.chat_id)
+        
+        # 获取缓存中的所有 jargon
+        cached_jargons = jargon_miner.get_cached_jargons()
+        if not cached_jargons:
+            return []
+        
+        matched_entries: List[Tuple[str, str]] = []
+        
+        # 遍历 messages，检查缓存中的 jargon 是否出现
+        for i, msg in enumerate(messages):
+            # 跳过机器人自己的消息
+            if is_bot_message(msg):
+                continue
+            
+            # 获取消息文本
+            msg_text = (
+                getattr(msg, "processed_plain_text", None) or 
+                ""
+            ).strip()
+            
+            if not msg_text:
+                continue
+            
+            # 检查每个缓存中的 jargon 是否出现在消息文本中
+            for jargon in cached_jargons:
+                if not jargon or not jargon.strip():
+                    continue
+                
+                jargon_content = jargon.strip()
+                
+                # 使用正则匹配，考虑单词边界（类似 jargon_explainer 中的逻辑）
+                pattern = re.escape(jargon_content)
+                # 对于中文，使用更宽松的匹配；对于英文/数字，使用单词边界
+                if re.search(r"[\u4e00-\u9fff]", jargon_content):
+                    # 包含中文，使用更宽松的匹配
+                    search_pattern = pattern
+                else:
+                    # 纯英文/数字，使用单词边界
+                    search_pattern = r"\b" + pattern + r"\b"
+                
+                if re.search(search_pattern, msg_text, re.IGNORECASE):
+                    # 找到匹配，构建条目（source_id 从 1 开始，因为 build_anonymous_messages 的编号从 1 开始）
+                    source_id = str(i + 1)
+                    matched_entries.append((jargon_content, source_id))
+        
+        return matched_entries
 
     async def _process_jargon_entries(self, jargon_entries: List[Tuple[str, str]], messages: List[Any]) -> None:
         """
