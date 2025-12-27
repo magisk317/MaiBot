@@ -123,9 +123,11 @@ class ExpressionSelector:
             related_chat_ids = self.get_related_chat_ids(chat_id)
 
             # 查询所有相关chat_id的表达方式，排除 rejected=1 的，且只选择 count > 1 的
-            style_query = Expression.select().where(
-                (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected) & (Expression.count > 1)
-            )
+            # 如果 expression_checked_only 为 True，则只选择 checked=True 且 rejected=False 的
+            base_conditions = (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected) & (Expression.count > 1)
+            if global_config.expression.expression_checked_only:
+                base_conditions = base_conditions & (Expression.checked)
+            style_query = Expression.select().where(base_conditions)
 
             style_exprs = [
                 {
@@ -202,7 +204,11 @@ class ExpressionSelector:
             related_chat_ids = self.get_related_chat_ids(chat_id)
 
             # 优化：一次性查询所有相关chat_id的表达方式，排除 rejected=1 的表达
-            style_query = Expression.select().where((Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected))
+            # 如果 expression_checked_only 为 True，则只选择 checked=True 且 rejected=False 的
+            base_conditions = (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected)
+            if global_config.expression.expression_checked_only:
+                base_conditions = base_conditions & (Expression.checked)
+            style_query = Expression.select().where(base_conditions)
 
             style_exprs = [
                 {
@@ -295,7 +301,11 @@ class ExpressionSelector:
             # think_level == 1: 先选高count，再从所有表达方式中随机抽样
             # 1. 获取所有表达方式并分离 count > 1 和 count <= 1 的
             related_chat_ids = self.get_related_chat_ids(chat_id)
-            style_query = Expression.select().where((Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected))
+            # 如果 expression_checked_only 为 True，则只选择 checked=True 且 rejected=False 的
+            base_conditions = (Expression.chat_id.in_(related_chat_ids)) & (~Expression.rejected)
+            if global_config.expression.expression_checked_only:
+                base_conditions = base_conditions & (Expression.checked)
+            style_query = Expression.select().where(base_conditions)
 
             all_style_exprs = [
                 {

@@ -30,7 +30,7 @@ from src.chat.utils.chat_message_builder import (
     get_raw_msg_before_timestamp_with_chat,
 )
 from src.chat.utils.utils import record_replyer_action_temp
-from src.hippo_memorizer.chat_history_summarizer import ChatHistorySummarizer
+from src.memory_system.chat_history_summarizer import ChatHistorySummarizer
 
 if TYPE_CHECKING:
     from src.common.data_models.database_data_model import DatabaseMessages

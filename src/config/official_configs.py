@@ -323,10 +323,13 @@ class ExpressionConfig(ConfigBase):
     格式: [["qq:12345:group", "qq:67890:private"]]
     """
 
-    reflect: bool = False
-    """是否启用表达反思"""
+    expression_self_reflect: bool = False
+    """是否启用自动表达优化"""
+    
+    expression_manual_reflect: bool = False
+    """是否启用手动表达优化"""
 
-    reflect_operator_id: str = ""
+    manual_reflect_operator_id: str = ""
     """表达反思操作员ID"""
 
     allow_reflect: list[str] = field(default_factory=list)
@@ -348,6 +351,26 @@ class ExpressionConfig(ConfigBase):
     黑话解释来源模式：
     - "context": 使用上下文自动匹配黑话并解释（原有模式）
     - "planner": 仅使用 Planner 在 reply 动作中给出的 unknown_words 列表进行黑话检索
+    """
+
+    expression_checked_only: bool = False
+    """
+    是否仅选择已检查且未拒绝的表达方式
+    当设置为 true 时，只有 checked=True 且 rejected=False 的表达方式才会被选择
+    当设置为 false 时，保留旧的筛选原则（仅排除 rejected=True 的表达方式）
+    """
+
+
+    expression_auto_check_interval: int = 3600
+    """
+    表达方式自动检查的间隔时间（单位：秒）
+    默认值：3600秒（1小时）
+    """
+
+    expression_auto_check_count: int = 10
+    """
+    每次自动检查时随机选取的表达方式数量
+    默认值：10条
     """
 
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
