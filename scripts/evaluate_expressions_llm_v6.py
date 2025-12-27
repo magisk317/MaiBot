@@ -13,7 +13,8 @@ import json
 import random
 import sys
 import os
-from typing import List, Dict
+import glob
+from typing import List, Dict, Set, Tuple
 
 # 添加项目根目录到路径
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -27,32 +28,66 @@ logger = get_logger("expression_evaluator_llm")
 
 # 评估结果文件路径
 TEMP_DIR = os.path.join(os.path.dirname(__file__), "temp")
-MANUAL_EVAL_FILE = os.path.join(TEMP_DIR, "manual_evaluation_results.json")
 
 
 def load_manual_results() -> List[Dict]:
     """
-    加载人工评估结果
+    加载人工评估结果（自动读取temp目录下所有JSON文件并合并）
     
     Returns:
-        人工评估结果列表
+        人工评估结果列表（已去重）
     """
-    if not os.path.exists(MANUAL_EVAL_FILE):
-        logger.error(f"未找到人工评估结果文件: {MANUAL_EVAL_FILE}")
-        print("\n✗ 错误：未找到人工评估结果文件")
+    if not os.path.exists(TEMP_DIR):
+        logger.error(f"未找到temp目录: {TEMP_DIR}")
+        print("\n✗ 错误：未找到temp目录")
         print("   请先运行 evaluate_expressions_manual.py 进行人工评估")
         return []
     
-    try:
-        with open(MANUAL_EVAL_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            results = data.get("manual_results", [])
-            logger.info(f"成功加载 {len(results)} 条人工评估结果")
-            return results
-    except Exception as e:
-        logger.error(f"加载人工评估结果失败: {e}")
-        print(f"\n✗ 加载人工评估结果失败: {e}")
+    # 查找所有JSON文件
+    json_files = glob.glob(os.path.join(TEMP_DIR, "*.json"))
+    
+    if not json_files:
+        logger.error(f"temp目录下未找到JSON文件: {TEMP_DIR}")
+        print("\n✗ 错误：temp目录下未找到JSON文件")
+        print("   请先运行 evaluate_expressions_manual.py 进行人工评估")
         return []
+    
+    logger.info(f"找到 {len(json_files)} 个JSON文件")
+    print(f"\n找到 {len(json_files)} 个JSON文件:")
+    for json_file in json_files:
+        print(f"  - {os.path.basename(json_file)}")
+    
+    # 读取并合并所有JSON文件
+    all_results = []
+    seen_pairs: Set[Tuple[str, str]] = set()  # 用于去重
+    
+    for json_file in json_files:
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                results = data.get("manual_results", [])
+                
+                # 去重：使用(situation, style)作为唯一标识
+                for result in results:
+                    if "situation" not in result or "style" not in result:
+                        logger.warning(f"跳过无效数据（缺少必要字段）: {result}")
+                        continue
+                    
+                    pair = (result["situation"], result["style"])
+                    if pair not in seen_pairs:
+                        seen_pairs.add(pair)
+                        all_results.append(result)
+                
+                logger.info(f"从 {os.path.basename(json_file)} 加载了 {len(results)} 条结果")
+        except Exception as e:
+            logger.error(f"加载文件 {json_file} 失败: {e}")
+            print(f"  警告：加载文件 {os.path.basename(json_file)} 失败: {e}")
+            continue
+    
+    logger.info(f"成功合并 {len(all_results)} 条人工评估结果（去重后）")
+    print(f"\n✓ 成功合并 {len(all_results)} 条人工评估结果（已去重）")
+    
+    return all_results
 
 
 def create_evaluation_prompt(situation: str, style: str) -> str:

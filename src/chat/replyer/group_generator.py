@@ -616,107 +616,6 @@ class DefaultReplyer:
             logger.error(f"上下文黑话解释失败: {e}")
             return ""
 
-    def build_chat_history_prompts(
-        self, message_list_before_now: List[DatabaseMessages], target_user_id: str, sender: str
-    ) -> Tuple[str, str]:
-        """
-
-        Args:
-            message_list_before_now: 历史消息列表
-            target_user_id: 目标用户ID（当前对话对象）
-
-        Returns:
-            Tuple[str, str]: (核心对话prompt, 背景对话prompt)
-        """
-        # 构建背景对话 prompt
-        all_dialogue_prompt = ""
-        if message_list_before_now:
-            latest_msgs = message_list_before_now[-int(global_config.chat.max_context_size) :]
-            all_dialogue_prompt = build_readable_messages(
-                latest_msgs,
-                replace_bot_name=True,
-                timestamp_mode="normal_no_YMD",
-                truncate=True,
-            )
-
-        return all_dialogue_prompt
-
-    def core_background_build_chat_history_prompts(
-        self, message_list_before_now: List[DatabaseMessages], target_user_id: str, sender: str
-    ) -> Tuple[str, str]:
-        """
-
-        Args:
-            message_list_before_now: 历史消息列表
-            target_user_id: 目标用户ID（当前对话对象）
-
-        Returns:
-            Tuple[str, str]: (核心对话prompt, 背景对话prompt)
-        """
-        core_dialogue_list: List[DatabaseMessages] = []
-        bot_id = str(global_config.bot.qq_account)
-
-        # 过滤消息：分离bot和目标用户的对话 vs 其他用户的对话
-        for msg in message_list_before_now:
-            try:
-                msg_user_id = str(msg.user_info.user_id)
-                reply_to = msg.reply_to
-                _platform, reply_to_user_id = self._parse_reply_target(reply_to)
-                if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
-                    # bot 和目标用户的对话
-                    core_dialogue_list.append(msg)
-            except Exception as e:
-                logger.error(f"处理消息记录时出错: {msg}, 错误: {e}")
-
-        # 构建核心对话 prompt
-        core_dialogue_prompt = ""
-        if core_dialogue_list:
-            # 检查最新五条消息中是否包含bot自己说的消息
-            latest_5_messages = core_dialogue_list[-5:] if len(core_dialogue_list) >= 5 else core_dialogue_list
-            has_bot_message = any(str(msg.user_info.user_id) == bot_id for msg in latest_5_messages)
-
-            # logger.info(f"最新五条消息：{latest_5_messages}")
-            # logger.info(f"最新五条消息中是否包含bot自己说的消息：{has_bot_message}")
-
-            # 如果最新五条消息中不包含bot的消息，则返回空字符串
-            if not has_bot_message:
-                core_dialogue_prompt = ""
-            else:
-                core_dialogue_list = core_dialogue_list[
-                    -int(global_config.chat.max_context_size * 0.6) :
-                ]  # 限制消息数量
-
-                core_dialogue_prompt_str = build_readable_messages(
-                    core_dialogue_list,
-                    replace_bot_name=True,
-                    timestamp_mode="normal_no_YMD",
-                    read_mark=0.0,
-                    truncate=True,
-                    show_actions=True,
-                )
-                core_dialogue_prompt = f"""--------------------------------
-这是上述中你和{sender}的对话摘要，内容从上面的对话中截取，便于你理解：
-{core_dialogue_prompt_str}
---------------------------------
-"""
-
-        # 构建背景对话 prompt
-        all_dialogue_prompt = ""
-        if message_list_before_now:
-            latest_25_msgs = message_list_before_now[-int(global_config.chat.max_context_size) :]
-            all_dialogue_prompt_str = build_readable_messages(
-                latest_25_msgs,
-                replace_bot_name=True,
-                timestamp_mode="normal_no_YMD",
-                truncate=True,
-            )
-            if core_dialogue_prompt:
-                all_dialogue_prompt = f"所有用户的发言：\n{all_dialogue_prompt_str}"
-            else:
-                all_dialogue_prompt = f"{all_dialogue_prompt_str}"
-
-        return core_dialogue_prompt, all_dialogue_prompt
-
     async def build_actions_prompt(
         self, available_actions: Dict[str, ActionInfo], chosen_actions_info: Optional[List[ActionPlannerInfo]] = None
     ) -> str:
@@ -940,6 +839,7 @@ class DefaultReplyer:
             timestamp_mode="relative",
             read_mark=0.0,
             show_actions=True,
+            long_time_notice=True,
         )
 
         # 统一黑话解释构建：根据配置选择上下文或 Planner 模式
@@ -1047,8 +947,16 @@ class DefaultReplyer:
         else:
             reply_target_block = ""
 
-        # 构建分离的对话 prompt
-        dialogue_prompt = self.build_chat_history_prompts(message_list_before_now_long, user_id, sender)
+
+        if message_list_before_now_long:
+            latest_msgs = message_list_before_now_long[-int(global_config.chat.max_context_size) :]
+            dialogue_prompt = build_readable_messages(
+                latest_msgs,
+                replace_bot_name=True,
+                timestamp_mode="normal_no_YMD",
+                truncate=True,
+                long_time_notice=True,
+            )
 
         # 获取匹配的额外prompt
         chat_prompt_content = self.get_chat_prompt_for_chat(chat_id)
