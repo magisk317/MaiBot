@@ -1,4 +1,4 @@
-"""独立的 WebUI 服务器 - 默认运行在 127.0.0.1:8001"""
+"""独立的 WebUI 服务器 - 运行在 0.0.0.0:8001"""
 
 import asyncio
 import mimetypes
@@ -15,7 +15,7 @@ logger = get_logger("webui_server")
 class WebUIServer:
     """独立的 WebUI 服务器"""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 8001):
+    def __init__(self, host: str = "0.0.0.0", port: int = 8001):
         self.host = host
         self.port = port
         self.app = FastAPI(title="MaiBot WebUI")
