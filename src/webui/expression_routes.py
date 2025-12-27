@@ -23,6 +23,8 @@ class ExpressionResponse(BaseModel):
     last_active_time: float
     chat_id: str
     create_date: Optional[float]
+    checked: bool
+    rejected: bool
 
 
 class ExpressionListResponse(BaseModel):
@@ -56,6 +58,8 @@ class ExpressionUpdateRequest(BaseModel):
     situation: Optional[str] = None
     style: Optional[str] = None
     chat_id: Optional[str] = None
+    checked: Optional[bool] = None
+    rejected: Optional[bool] = None
 
 
 class ExpressionUpdateResponse(BaseModel):
@@ -98,6 +102,8 @@ def expression_to_response(expression: Expression) -> ExpressionResponse:
         last_active_time=expression.last_active_time,
         chat_id=expression.chat_id,
         create_date=expression.create_date,
+        checked=expression.checked,
+        rejected=expression.rejected,
     )
 
 
