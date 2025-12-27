@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.0"
+version = "7.3.1"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 # 如果你想要修改配置文件，请递增version的值
@@ -96,6 +96,7 @@ expression_checked_only = true # 是否仅选择已检查且未拒绝的表达�
 expression_self_reflect = true # 是否启用自动表达优化（Bot主动向管理员询问表达方式是否合适）
 expression_auto_check_interval = 600 # 表达方式自动检查的间隔时间（单位：秒），默认值：3600秒（1小时）
 expression_auto_check_count = 20 # 每次自动检查时随机选取的表达方式数量，默认值：10条
+expression_auto_check_custom_criteria = [] # 表达方式自动检查的额外自定义评估标准，格式：["标准1", "标准2", "标准3", ...]，这些标准会被添加到评估提示词中，作为额外的评估要求
 
 expression_manual_reflect = false # 是否启用手动表达优化（Bot主动向管理员询问表达方式是否合适）
 manual_reflect_operator_id = "" # 手动表达优化操作员ID，格式：platform:id:type (例如 "qq:123456:private" 或 "qq:654321:group")

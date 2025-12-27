@@ -34,15 +34,31 @@ def create_evaluation_prompt(situation: str, style: str) -> str:
     Returns:
         评估提示词
     """
+    # 基础评估标准
+    base_criteria = [
+        "表达方式或言语风格 是否与使用条件或使用情景 匹配",
+        "允许部分语法错误或口头化或缺省出现",
+        "表达方式不能太过特指，需要具有泛用性",
+        "一般不涉及具体的人名或名称"
+    ]
+    
+    # 从配置中获取额外的自定义标准
+    custom_criteria = global_config.expression.expression_auto_check_custom_criteria
+    
+    # 合并所有评估标准
+    all_criteria = base_criteria.copy()
+    if custom_criteria:
+        all_criteria.extend(custom_criteria)
+    
+    # 构建评估标准列表字符串
+    criteria_list = "\n".join([f"{i+1}. {criterion}" for i, criterion in enumerate(all_criteria)])
+    
     prompt = f"""请评估以下表达方式或语言风格以及使用条件或使用情景是否合适：
 使用条件或使用情景：{situation}
 表达方式或言语风格：{style}
 
 请从以下方面进行评估：
-1. 表达方式或言语风格 是否与使用条件或使用情景 匹配
-2. 允许部分语法错误或口头化或缺省出现
-3. 表达方式不能太过特指，需要具有泛用性
-4. 一般不涉及具体的人名或名称
+{criteria_list}
 
 请以JSON格式输出评估结果：
 {{

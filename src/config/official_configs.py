@@ -373,6 +373,14 @@ class ExpressionConfig(ConfigBase):
     默认值：10条
     """
 
+    expression_auto_check_custom_criteria: list[str] = field(default_factory=list)
+    """
+    表达方式自动检查的额外自定义评估标准
+    格式: ["标准1", "标准2", "标准3", ...]
+    这些标准会被添加到评估提示词中，作为额外的评估要求
+    默认值：空列表
+    """
+
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
         """
         解析流配置字符串并生成对应的 chat_id
