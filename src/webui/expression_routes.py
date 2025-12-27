@@ -20,7 +20,6 @@ class ExpressionResponse(BaseModel):
     id: int
     situation: str
     style: str
-    context: Optional[str]
     last_active_time: float
     chat_id: str
     create_date: Optional[float]
@@ -48,7 +47,6 @@ class ExpressionCreateRequest(BaseModel):
 
     situation: str
     style: str
-    context: Optional[str] = NonNegativeFloat
     chat_id: str
 
 
@@ -57,7 +55,6 @@ class ExpressionUpdateRequest(BaseModel):
 
     situation: Optional[str] = None
     style: Optional[str] = None
-    context: Optional[str] = None
     chat_id: Optional[str] = None
 
 
@@ -98,7 +95,6 @@ def expression_to_response(expression: Expression) -> ExpressionResponse:
         id=expression.id,
         situation=expression.situation,
         style=expression.style,
-        context=expression.context,
         last_active_time=expression.last_active_time,
         chat_id=expression.chat_id,
         create_date=expression.create_date,
@@ -204,7 +200,7 @@ async def get_expression_list(
     Args:
         page: 页码 (从 1 开始)
         page_size: 每页数量 (1-100)
-        search: 搜索关键词 (匹配 situation, style, context)
+        search: 搜索关键词 (匹配 situation, style)
         chat_id: 聊天ID筛选
         authorization: Authorization header
 
@@ -222,7 +218,6 @@ async def get_expression_list(
             query = query.where(
                 (Expression.situation.contains(search))
                 | (Expression.style.contains(search))
-                | (Expression.context.contains(search))
             )
 
         # 聊天ID过滤
@@ -311,7 +306,6 @@ async def create_expression(
         expression = Expression.create(
             situation=request.situation,
             style=request.style,
-            context=request.context,
             chat_id=request.chat_id,
             last_active_time=current_time,
             create_date=current_time,
