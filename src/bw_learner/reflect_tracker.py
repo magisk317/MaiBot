@@ -134,12 +134,14 @@ class ReflectTracker:
             if judgment == "Approve":
                 self.expression.checked = True
                 self.expression.rejected = False
+                self.expression.modified_by = 'ai'  # 通过LLM判断也标记为ai
                 self.expression.save()
                 logger.info(f"Expression {self.expression.id} approved by operator.")
                 return True
 
             elif judgment == "Reject":
                 self.expression.checked = True
+                self.expression.modified_by = 'ai'  # 通过LLM判断也标记为ai
                 corrected_situation = json_obj.get("corrected_situation")
                 corrected_style = json_obj.get("corrected_style")
 

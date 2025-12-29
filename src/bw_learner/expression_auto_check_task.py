@@ -184,6 +184,7 @@ class ExpressionAutoCheckTask(AsyncTask):
         try:
             expression.checked = True
             expression.rejected = not suitable  # 通过则rejected=0，不通过则rejected=1
+            expression.modified_by = 'ai'  # 标记为AI检查
             expression.save()
             
             status = "通过" if suitable else "不通过"

@@ -328,6 +328,7 @@ class Expression(BaseModel):
     create_date = FloatField(null=True)  # 创建日期，允许为空以兼容老数据
     checked = BooleanField(default=False)  # 是否已检查
     rejected = BooleanField(default=False)  # 是否被拒绝但未更新
+    modified_by = TextField(null=True)  # 最后修改来源：'ai' 或 'user'，为空表示未检查
 
     class Meta:
         table_name = "expression"
