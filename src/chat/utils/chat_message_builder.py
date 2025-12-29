@@ -13,7 +13,7 @@ from src.common.data_models.message_data_model import MessageAndActionModel
 from src.common.database.database_model import ActionRecords
 from src.common.database.database_model import Images
 from src.person_info.person_info import Person, get_person_id
-from src.chat.utils.utils import translate_timestamp_to_human_readable, assign_message_ids
+from src.chat.utils.utils import translate_timestamp_to_human_readable, assign_message_ids, is_bot_self
 
 install(extra_lines=3)
 logger = get_logger("chat_message_builder")
@@ -43,12 +43,9 @@ def replace_user_references(
     if name_resolver is None:
 
         def default_resolver(platform: str, user_id: str) -> str:
-            # 检查是否是机器人自己（支持多平台）
-            if replace_bot_name:
-                if platform == "qq" and user_id == global_config.bot.qq_account:
-                    return f"{global_config.bot.nickname}(你)"
-                if platform == "telegram" and user_id == getattr(global_config.bot, "telegram_account", ""):
-                    return f"{global_config.bot.nickname}(你)"
+            # 检查是否是机器人自己（支持多平台，包括 WebUI）
+            if replace_bot_name and is_bot_self(platform, user_id):
+                return f"{global_config.bot.nickname}(你)"
             person = Person(platform=platform, user_id=user_id)
             return person.person_name or user_id  # type: ignore
 
@@ -61,8 +58,8 @@ def replace_user_references(
         aaa = match[1]
         bbb = match[2]
         try:
-            # 检查是否是机器人自己
-            if replace_bot_name and bbb == global_config.bot.qq_account:
+            # 检查是否是机器人自己（支持多平台，包括 WebUI）
+            if replace_bot_name and is_bot_self(platform, bbb):
                 reply_person_name = f"{global_config.bot.nickname}(你)"
             else:
                 reply_person_name = name_resolver(platform, bbb) or aaa
@@ -468,10 +465,8 @@ def _build_readable_messages_internal(
         person_name = (
             person.person_name or f"{user_nickname}" or (f"昵称：{user_cardname}" if user_cardname else "某人")
         )
-        if replace_bot_name and (
-            (platform == global_config.bot.platform and user_id == global_config.bot.qq_account)
-            or (platform == "telegram" and user_id == getattr(global_config.bot, "telegram_account", ""))
-        ):
+        # 使用统一的 is_bot_self 函数判断是否是机器人自己（支持多平台，包括 WebUI）
+        if replace_bot_name and is_bot_self(platform, user_id):
             person_name = f"{global_config.bot.nickname}(你)"
 
         # 使用独立函数处理用户引用格式

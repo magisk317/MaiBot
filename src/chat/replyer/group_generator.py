@@ -16,7 +16,7 @@ from src.chat.message_receive.message import UserInfo, Seg, MessageRecv, Message
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.message_receive.uni_message_sender import UniversalMessageSender
 from src.chat.utils.timer_calculator import Timer  # <--- Import Timer
-from src.chat.utils.utils import get_chat_type_and_target_info
+from src.chat.utils.utils import get_chat_type_and_target_info, is_bot_self
 from src.chat.utils.prompt_builder import global_prompt_manager
 from src.chat.utils.chat_message_builder import (
     build_readable_messages,
@@ -815,10 +815,8 @@ class DefaultReplyer:
 
         person_list_short: List[Person] = []
         for msg in message_list_before_short:
-            if (
-                global_config.bot.qq_account == msg.user_info.user_id
-                and global_config.bot.platform == msg.user_info.platform
-            ):
+            # 使用统一的 is_bot_self 函数判断是否是机器人自己（支持多平台，包括 WebUI）
+            if is_bot_self(msg.user_info.platform, msg.user_info.user_id):
                 continue
             if (
                 reply_message

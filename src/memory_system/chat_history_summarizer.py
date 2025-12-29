@@ -19,6 +19,7 @@ from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
 from src.plugin_system.apis import message_api
 from src.chat.utils.chat_message_builder import build_readable_messages
+from src.chat.utils.utils import is_bot_self
 from src.person_info.person_info import Person
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
@@ -415,11 +416,11 @@ class ChatHistorySummarizer:
         # 1. 检查当前批次内是否有 bot 发言（只检查当前批次，不往前推）
         # 原因：我们要记录的是 bot 参与过的对话片段，如果当前批次内 bot 没有发言，
         # 说明 bot 没有参与这段对话，不应该记录
-        bot_user_id = str(global_config.bot.qq_account)
         has_bot_message = False
 
         for msg in messages:
-            if msg.user_info.user_id == bot_user_id:
+            # 使用统一的 is_bot_self 函数判断是否是机器人自己（支持多平台，包括 WebUI）
+            if is_bot_self(msg.user_info.platform, msg.user_info.user_id):
                 has_bot_message = True
                 break
 

@@ -18,7 +18,7 @@ from src.chat.utils.chat_message_builder import (
     get_raw_msg_before_timestamp_with_chat,
     replace_user_references,
 )
-from src.chat.utils.utils import get_chat_type_and_target_info
+from src.chat.utils.utils import get_chat_type_and_target_info, is_bot_self
 from src.chat.planner_actions.action_manager import ActionManager
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.plugin_system.base.component_types import ActionInfo, ComponentType, ActionActivationType
@@ -311,11 +311,9 @@ class ActionPlanner:
         return action_planner_infos
 
     def _is_message_from_self(self, message: "DatabaseMessages") -> bool:
-        """判断消息是否由机器人自身发送"""
+        """判断消息是否由机器人自身发送（支持多平台，包括 WebUI）"""
         try:
-            return str(message.user_info.user_id) == str(global_config.bot.qq_account) and (
-                message.user_info.platform or ""
-            ) == (global_config.bot.platform or "")
+            return is_bot_self(message.user_info.platform or "", str(message.user_info.user_id))
         except AttributeError:
             logger.warning(f"{self.log_prefix}检测消息发送者失败，缺少必要字段")
             return False
