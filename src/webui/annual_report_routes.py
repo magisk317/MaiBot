@@ -54,7 +54,6 @@ class SocialNetworkData(BaseModel):
     """社交网络数据"""
 
     total_groups: int = Field(0, description="加入的群组总数")
-    new_friends_count: int = Field(0, description="今年新认识的朋友数")
     top_groups: List[Dict[str, Any]] = Field(default_factory=list, description="话痨群组TOP3")
     top_users: List[Dict[str, Any]] = Field(default_factory=list, description="互动最多的用户TOP3")
     at_count: int = Field(0, description="被@次数")
@@ -71,6 +70,7 @@ class BrainPowerData(BaseModel):
     favorite_model: Optional[str] = Field(None, description="最爱用的模型")
     favorite_model_count: int = Field(0, description="最爱模型的调用次数")
     model_distribution: List[Dict[str, Any]] = Field(default_factory=list, description="模型使用分布")
+    top_reply_models: List[Dict[str, Any]] = Field(default_factory=list, description="最喜欢的回复模型TOP5")
     most_expensive_cost: float = Field(0.0, description="最昂贵的一次思考花费")
     most_expensive_time: Optional[str] = Field(None, description="最昂贵思考的时间")
     top_token_consumers: List[Dict[str, Any]] = Field(default_factory=list, description="烧钱大户TOP3")
@@ -89,13 +89,15 @@ class ExpressionVibeData(BaseModel):
     """个性与表达数据"""
 
     top_emoji: Optional[Dict[str, Any]] = Field(None, description="表情包之王")
-    top_emojis: List[Dict[str, Any]] = Field(default_factory=list, description="TOP5表情包")
-    top_expressions: List[Dict[str, Any]] = Field(default_factory=list, description="最常用的表达风格")
+    top_emojis: List[Dict[str, Any]] = Field(default_factory=list, description="TOP3表情包")
+    top_expressions: List[Dict[str, Any]] = Field(default_factory=list, description="印象最深刻的表达风格")
     rejected_expression_count: int = Field(0, description="被拒绝的表达次数")
     checked_expression_count: int = Field(0, description="已检查的表达次数")
     total_expressions: int = Field(0, description="表达总数")
     action_types: List[Dict[str, Any]] = Field(default_factory=list, description="动作类型分布")
     image_processed_count: int = Field(0, description="处理的图片数量")
+    late_night_reply: Optional[Dict[str, Any]] = Field(None, description="深夜还在回复")
+    favorite_reply: Optional[Dict[str, Any]] = Field(None, description="最喜欢的回复")
 
 
 class AchievementData(BaseModel):
@@ -231,25 +233,19 @@ async def get_time_footprint(year: int = 2025) -> TimeFootprintData:
 
 async def get_social_network(year: int = 2025) -> SocialNetworkData:
     """获取社交网络数据"""
+    from src.config.config import global_config
+    
     data = SocialNetworkData()
     start_ts, end_ts = get_year_time_range(year)
+    
+    # 获取 bot 自身的 QQ 账号，用于过滤
+    bot_qq = str(global_config.bot.qq_account or "")
 
     try:
         # 1. 加入的群组总数
         data.total_groups = ChatStreams.select().where(ChatStreams.group_id.is_null(False)).count()
 
-        # 2. 今年新认识的朋友数
-        data.new_friends_count = (
-            PersonInfo.select()
-            .where(
-                (PersonInfo.know_times.is_null(False))
-                & (PersonInfo.know_times >= start_ts)
-                & (PersonInfo.know_times <= end_ts)
-            )
-            .count()
-        )
-
-        # 3. 话痨群组 TOP3
+        # 2. 话痨群组 TOP3
         top_groups_query = (
             Messages.select(
                 Messages.chat_info_group_id,
@@ -274,7 +270,7 @@ async def get_social_network(year: int = 2025) -> SocialNetworkData:
             for row in top_groups_query.dicts()
         ]
 
-        # 4. 互动最多的用户 TOP3
+        # 3. 互动最多的用户 TOP3（过滤 bot 自身）
         top_users_query = (
             Messages.select(
                 Messages.user_id,
@@ -285,6 +281,7 @@ async def get_social_network(year: int = 2025) -> SocialNetworkData:
                 (Messages.time >= start_ts)
                 & (Messages.time <= end_ts)
                 & (Messages.user_id.is_null(False))
+                & (Messages.user_id != bot_qq)  # 过滤 bot 自身
             )
             .group_by(Messages.user_id)
             .order_by(fn.COUNT(Messages.id).desc())
@@ -299,7 +296,7 @@ async def get_social_network(year: int = 2025) -> SocialNetworkData:
             for row in top_users_query.dicts()
         ]
 
-        # 5. 被@次数
+        # 4. 被@次数
         data.at_count = (
             Messages.select()
             .where(
@@ -310,7 +307,7 @@ async def get_social_network(year: int = 2025) -> SocialNetworkData:
             .count()
         )
 
-        # 6. 被提及次数
+        # 5. 被提及次数
         data.mentioned_count = (
             Messages.select()
             .where(
@@ -321,15 +318,17 @@ async def get_social_network(year: int = 2025) -> SocialNetworkData:
             .count()
         )
 
-        # 7. 最长情陪伴的用户
-        # 找出跨度时间最长的用户
+        # 6. 最长情陪伴的用户（过滤 bot 自身）
         companion_query = (
             ChatStreams.select(
                 ChatStreams.user_id,
                 ChatStreams.user_nickname,
                 (ChatStreams.last_active_time - ChatStreams.create_time).alias("duration"),
             )
-            .where(ChatStreams.user_id.is_null(False))
+            .where(
+                (ChatStreams.user_id.is_null(False))
+                & (ChatStreams.user_id != bot_qq)  # 过滤 bot 自身
+            )
             .order_by((ChatStreams.last_active_time - ChatStreams.create_time).desc())
             .limit(1)
         )
@@ -403,14 +402,19 @@ async def get_brain_power(year: int = 2025) -> BrainPowerData:
             data.most_expensive_cost = round(expensive_result.cost or 0, 4)
             data.most_expensive_time = expensive_result.timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 4. 烧钱大户 TOP3 (按用户)
+        # 4. 烧钱大户 TOP3 (按用户，过滤 system)
         consumer_query = (
             LLMUsage.select(
                 LLMUsage.user_id,
                 fn.COALESCE(fn.SUM(LLMUsage.cost), 0).alias("cost"),
                 fn.COALESCE(fn.SUM(LLMUsage.total_tokens), 0).alias("tokens"),
             )
-            .where((LLMUsage.timestamp >= start_dt) & (LLMUsage.timestamp <= end_dt))
+            .where(
+                (LLMUsage.timestamp >= start_dt)
+                & (LLMUsage.timestamp <= end_dt)
+                & (LLMUsage.user_id != "system")  # 过滤 system 用户
+                & (LLMUsage.user_id.is_null(False))
+            )
             .group_by(LLMUsage.user_id)
             .order_by(fn.SUM(LLMUsage.cost).desc())
             .limit(3)
@@ -424,7 +428,32 @@ async def get_brain_power(year: int = 2025) -> BrainPowerData:
             for row in consumer_query.dicts()
         ]
 
-        # 5. 高冷指数 (沉默率) - 基于 ActionRecords
+        # 5. 最喜欢的回复模型 TOP5（按模型的回复次数统计，只统计 replyer 调用）
+        # 假设 replyer 调用有特定的 model_assign_name 格式或可以通过某种方式识别
+        reply_model_query = (
+            LLMUsage.select(
+                fn.COALESCE(LLMUsage.model_assign_name, LLMUsage.model_name).alias("model"),
+                fn.COUNT(LLMUsage.id).alias("count"),
+            )
+            .where(
+                (LLMUsage.timestamp >= start_dt)
+                & (LLMUsage.timestamp <= end_dt)
+                & (
+                    LLMUsage.model_assign_name.contains("replyer")
+                    | LLMUsage.model_assign_name.contains("回复")
+                    | LLMUsage.model_assign_name.is_null(True)  # 包含没有 assign_name 的情况
+                )
+            )
+            .group_by(fn.COALESCE(LLMUsage.model_assign_name, LLMUsage.model_name))
+            .order_by(fn.COUNT(LLMUsage.id).desc())
+            .limit(5)
+        )
+        data.top_reply_models = [
+            {"model": row["model"], "count": row["count"]}
+            for row in reply_model_query.dicts()
+        ]
+
+        # 6. 高冷指数 (沉默率) - 基于 ActionRecords
         total_actions = ActionRecords.select().where(
             (ActionRecords.time >= start_ts) & (ActionRecords.time <= end_ts)
         ).count()
@@ -586,7 +615,12 @@ async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
             .count()
         )
 
-        # 6. 动作类型分布 (非 reply 动作)
+        # 6. 动作类型分布 (过滤无意义的动作)
+        # 过滤掉: no_reply_until_call, make_question, no_action, wait, complete_talk, listening, block_and_ignore
+        excluded_actions = [
+            "reply", "no_reply", "no_reply_until_call", "make_question", 
+            "no_action", "wait", "complete_talk", "listening", "block_and_ignore"
+        ]
         action_query = (
             ActionRecords.select(
                 ActionRecords.action_name,
@@ -595,8 +629,7 @@ async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
             .where(
                 (ActionRecords.time >= start_ts)
                 & (ActionRecords.time <= end_ts)
-                & (ActionRecords.action_name != "reply")
-                & (ActionRecords.action_name != "no_reply")
+                & (ActionRecords.action_name.not_in(excluded_actions))
             )
             .group_by(ActionRecords.action_name)
             .order_by(fn.COUNT(ActionRecords.id).desc())
@@ -617,6 +650,96 @@ async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
             )
             .count()
         )
+
+        # 8. 深夜还在回复 (0-6点最晚的10条消息中随机抽取一条)
+        import random
+        late_night_messages = list(
+            Messages.select(
+                Messages.time,
+                Messages.processed_plain_text,
+                Messages.display_message,
+            )
+            .where(
+                (Messages.time >= start_ts)
+                & (Messages.time <= end_ts)
+                & (Messages.is_self == True)  # bot 发送的消息
+            )
+            .order_by(Messages.time.desc())
+        )
+        # 筛选出0-6点的消息
+        late_night_filtered = []
+        for msg in late_night_messages:
+            msg_dt = datetime.fromtimestamp(msg.time)
+            hour = msg_dt.hour
+            if 0 <= hour < 6:  # 0点到6点
+                late_night_filtered.append({
+                    "time": msg.time,
+                    "hour": hour,
+                    "minute": msg_dt.minute,
+                    "content": msg.processed_plain_text or msg.display_message or "",
+                    "datetime_str": msg_dt.strftime("%H:%M"),
+                })
+            if len(late_night_filtered) >= 10:
+                break
+        
+        if late_night_filtered:
+            selected = random.choice(late_night_filtered)
+            content = selected["content"][:50] + "..." if len(selected["content"]) > 50 else selected["content"]
+            data.late_night_reply = {
+                "time": selected["datetime_str"],
+                "content": content,
+            }
+
+        # 9. 最喜欢的回复（按 action_data 统计回复内容出现次数）
+        from collections import Counter
+        import json as json_lib
+        
+        reply_records = (
+            ActionRecords.select(ActionRecords.action_data)
+            .where(
+                (ActionRecords.time >= start_ts)
+                & (ActionRecords.time <= end_ts)
+                & (ActionRecords.action_name == "reply")
+                & (ActionRecords.action_data.is_null(False))
+                & (ActionRecords.action_data != "")
+            )
+        )
+        
+        reply_contents = []
+        for record in reply_records:
+            try:
+                # action_data 可能是 JSON 格式
+                action_data = record.action_data
+                if action_data:
+                    # 尝试解析 JSON
+                    try:
+                        parsed = json_lib.loads(action_data)
+                        if isinstance(parsed, dict) and "content" in parsed:
+                            content = parsed["content"]
+                        elif isinstance(parsed, str):
+                            content = parsed
+                        else:
+                            content = str(parsed)
+                    except (json_lib.JSONDecodeError, TypeError):
+                        content = action_data
+                    
+                    # 只统计有意义的回复（长度大于2）
+                    if content and len(content) > 2:
+                        reply_contents.append(content)
+            except Exception:
+                continue
+        
+        if reply_contents:
+            content_counter = Counter(reply_contents)
+            most_common = content_counter.most_common(1)
+            if most_common:
+                fav_content, fav_count = most_common[0]
+                # 截断过长的内容
+                display_content = fav_content[:50] + "..." if len(fav_content) > 50 else fav_content
+                data.favorite_reply = {
+                    "content": display_content,
+                    "count": fav_count,
+                }
 
     except Exception as e:
         logger.error(f"获取个性与表达数据失败: {e}")
