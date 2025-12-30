@@ -113,6 +113,7 @@ class AnnualReportData(BaseModel):
     """年度报告完整数据"""
 
     year: int = Field(2025, description="报告年份")
+    bot_name: str = Field("麦麦", description="Bot名称")
     generated_at: str = Field(..., description="报告生成时间")
     time_footprint: TimeFootprintData = Field(default_factory=TimeFootprintData)
     social_network: SocialNetworkData = Field(default_factory=SocialNetworkData)
@@ -854,7 +855,12 @@ async def get_full_annual_report(year: int = 2025, _auth: bool = Depends(require
         完整的年度报告数据
     """
     try:
+        from src.config.config import global_config
+        
         logger.info(f"开始生成 {year} 年度报告...")
+        
+        # 获取 bot 名称
+        bot_name = global_config.bot.nickname or "麦麦"
 
         # 并行获取各维度数据
         time_footprint = await get_time_footprint(year)
@@ -865,6 +871,7 @@ async def get_full_annual_report(year: int = 2025, _auth: bool = Depends(require
 
         report = AnnualReportData(
             year=year,
+            bot_name=bot_name,
             generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             time_footprint=time_footprint,
             social_network=social_network,
