@@ -54,8 +54,8 @@ class SocialNetworkData(BaseModel):
     """社交网络数据"""
 
     total_groups: int = Field(0, description="加入的群组总数")
-    top_groups: List[Dict[str, Any]] = Field(default_factory=list, description="话痨群组TOP3")
-    top_users: List[Dict[str, Any]] = Field(default_factory=list, description="互动最多的用户TOP3")
+    top_groups: List[Dict[str, Any]] = Field(default_factory=list, description="话痨群组TOP5")
+    top_users: List[Dict[str, Any]] = Field(default_factory=list, description="互动最多的用户TOP5")
     at_count: int = Field(0, description="被@次数")
     mentioned_count: int = Field(0, description="被提及次数")
     longest_companion_user: Optional[str] = Field(None, description="最长情陪伴的用户")
@@ -259,18 +259,19 @@ async def get_social_network(year: int = 2025) -> SocialNetworkData:
             )
             .group_by(Messages.chat_info_group_id)
             .order_by(fn.COUNT(Messages.id).desc())
-            .limit(3)
+            .limit(5)
         )
         data.top_groups = [
             {
                 "group_id": row["chat_info_group_id"],
                 "group_name": row["chat_info_group_name"] or "未知群组",
                 "message_count": row["count"],
+                "is_webui": str(row["chat_info_group_id"]).startswith("webui_"),
             }
             for row in top_groups_query.dicts()
         ]
 
-        # 3. 互动最多的用户 TOP3（过滤 bot 自身）
+        # 3. 互动最多的用户 TOP5（过滤 bot 自身）
         top_users_query = (
             Messages.select(
                 Messages.user_id,
@@ -285,13 +286,14 @@ async def get_social_network(year: int = 2025) -> SocialNetworkData:
             )
             .group_by(Messages.user_id)
             .order_by(fn.COUNT(Messages.id).desc())
-            .limit(3)
+            .limit(5)
         )
         data.top_users = [
             {
                 "user_id": row["user_id"],
                 "user_nickname": row["user_nickname"] or "未知用户",
                 "message_count": row["count"],
+                "is_webui": str(row["user_id"]).startswith("webui_"),
             }
             for row in top_users_query.dicts()
         ]
@@ -533,8 +535,13 @@ async def get_brain_power(year: int = 2025) -> BrainPowerData:
 
 async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
     """获取个性与表达数据"""
+    from src.config.config import global_config
+    
     data = ExpressionVibeData()
     start_ts, end_ts = get_year_time_range(year)
+    
+    # 获取 bot 自身的 QQ 账号，用于筛选 bot 发送的消息
+    bot_qq = str(global_config.bot.qq_account or "")
 
     try:
         # 1. 表情包之王 - 使用次数最多的表情包
@@ -653,6 +660,21 @@ async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
 
         # 8. 深夜还在回复 (0-6点最晚的10条消息中随机抽取一条)
         import random
+        import re
+        
+        def clean_message_content(content: str) -> str:
+            """清理消息内容，移除回复引用等标记"""
+            if not content:
+                return ""
+            # 移除 [回复<xxx:xxx> 的消息：...] 格式的引用
+            content = re.sub(r'\[回复<[^>]+>\s*的消息[：:][^\]]*\]', '', content)
+            # 移除 [图片] [表情] 等标记
+            content = re.sub(r'\[(图片|表情|语音|视频|文件)\]', '', content)
+            # 移除多余的空白
+            content = re.sub(r'\s+', ' ', content).strip()
+            return content
+        
+        # 使用 user_id 判断是否是 bot 发送的消息
         late_night_messages = list(
             Messages.select(
                 Messages.time,
@@ -662,7 +684,7 @@ async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
             .where(
                 (Messages.time >= start_ts)
                 & (Messages.time <= end_ts)
-                & (Messages.is_self == True)  # bot 发送的消息
+                & (Messages.user_id == bot_qq)  # bot 发送的消息
             )
             .order_by(Messages.time.desc())
         )
@@ -672,13 +694,17 @@ async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
             msg_dt = datetime.fromtimestamp(msg.time)
             hour = msg_dt.hour
             if 0 <= hour < 6:  # 0点到6点
-                late_night_filtered.append({
-                    "time": msg.time,
-                    "hour": hour,
-                    "minute": msg_dt.minute,
-                    "content": msg.processed_plain_text or msg.display_message or "",
-                    "datetime_str": msg_dt.strftime("%H:%M"),
-                })
+                raw_content = msg.processed_plain_text or msg.display_message or ""
+                cleaned_content = clean_message_content(raw_content)
+                # 只保留有意义的内容
+                if cleaned_content and len(cleaned_content) > 2:
+                    late_night_filtered.append({
+                        "time": msg.time,
+                        "hour": hour,
+                        "minute": msg_dt.minute,
+                        "content": cleaned_content,
+                        "datetime_str": msg_dt.strftime("%H:%M"),
+                    })
             if len(late_night_filtered) >= 10:
                 break
         
@@ -708,20 +734,33 @@ async def get_expression_vibe(year: int = 2025) -> ExpressionVibeData:
         reply_contents = []
         for record in reply_records:
             try:
-                # action_data 可能是 JSON 格式
                 action_data = record.action_data
                 if action_data:
-                    # 尝试解析 JSON
+                    content = None
+                    # 尝试解析 JSON 格式
                     try:
                         parsed = json_lib.loads(action_data)
-                        if isinstance(parsed, dict) and "content" in parsed:
-                            content = parsed["content"]
+                        if isinstance(parsed, dict):
+                            # 优先使用 reply_text，其次使用 content
+                            content = parsed.get("reply_text") or parsed.get("content")
                         elif isinstance(parsed, str):
                             content = parsed
-                        else:
-                            content = str(parsed)
                     except (json_lib.JSONDecodeError, TypeError):
-                        content = action_data
+                        pass
+                    
+                    # 如果 JSON 解析失败，尝试解析 Python 字典字符串格式
+                    # 例如: "{'reply_text': '墨白灵不知道哦'}"
+                    if content is None:
+                        import ast
+                        try:
+                            parsed = ast.literal_eval(action_data)
+                            if isinstance(parsed, dict):
+                                content = parsed.get("reply_text") or parsed.get("content")
+                            elif isinstance(parsed, str):
+                                content = parsed
+                        except (ValueError, SyntaxError):
+                            # 无法解析，使用原始字符串
+                            content = action_data
                     
                     # 只统计有意义的回复（长度大于2）
                     if content and len(content) > 2:
