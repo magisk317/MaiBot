@@ -522,19 +522,32 @@ class ActionPlanner:
             # 根据 think_mode 配置决定 reply action 的示例 JSON
             # 在 JSON 中直接作为 action 参数携带 unknown_words 和 question
             if global_config.chat.think_mode == "classic":
-                reply_action_example = (
+                reply_action_example = ""
+                if global_config.chat.llm_quote:
+                    reply_action_example += "5.如果要明确回复消息，使用quote，如果消息不多不需要明确回复，设置quote为false\n"
+                reply_action_example += (
                     '{{"action":"reply", "target_message_id":"消息id(m+数字)", '
                     '"unknown_words":["词语1","词语2"], '
-                    '"question":"需要查询的问题"}'
+                    '"question":"需要查询的问题"'
                 )
+                if global_config.chat.llm_quote:
+                    reply_action_example += ', "quote_message":"如果需要引用该message，设置为true"'
+                reply_action_example += "}"
             else:
                 reply_action_example = (
                     "5.think_level表示思考深度，0表示该回复不需要思考和回忆，1表示该回复需要进行回忆和思考\n"
-                    + '{{"action":"reply", "think_level":数值等级(0或1), '
+                )
+                if global_config.chat.llm_quote:
+                    reply_action_example += "6.如果要明确回复消息，使用quote，如果消息不多不需要明确回复，设置quote为false\n"
+                reply_action_example += (
+                    '{{"action":"reply", "think_level":数值等级(0或1), '
                     '"target_message_id":"消息id(m+数字)", '
                     '"unknown_words":["词语1","词语2"], '
-                    '"question":"需要查询的问题"}'
+                    '"question":"需要查询的问题"'
                 )
+                if global_config.chat.llm_quote:
+                    reply_action_example += ', "quote_message":"如果需要引用该message，设置为true"'
+                reply_action_example += "}"
 
             planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")
             prompt = planner_prompt_template.format(

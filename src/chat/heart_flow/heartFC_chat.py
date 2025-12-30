@@ -244,12 +244,14 @@ class HeartFChatting:
         thinking_id,
         actions,
         selected_expressions: Optional[List[int]] = None,
+        quote_message: Optional[bool] = None,
     ) -> Tuple[Dict[str, Any], str, Dict[str, float]]:
         with Timer("回复发送", cycle_timers):
             reply_text = await self._send_response(
                 reply_set=response_set,
                 message_data=action_message,
                 selected_expressions=selected_expressions,
+                quote_message=quote_message,
             )
 
         # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
@@ -526,15 +528,22 @@ class HeartFChatting:
         reply_set: "ReplySetModel",
         message_data: "DatabaseMessages",
         selected_expressions: Optional[List[int]] = None,
+        quote_message: Optional[bool] = None,
     ) -> str:
-        new_message_count = message_api.count_new_messages(
-            chat_id=self.chat_stream.stream_id, start_time=self.last_read_time, end_time=time.time()
-        )
-
-        need_reply = new_message_count >= random.randint(2, 3)
-
-        if need_reply:
-            logger.info(f"{self.log_prefix} 从思考到回复，共有{new_message_count}条新消息，使用引用回复")
+        # 根据 llm_quote 配置决定是否使用 quote_message 参数
+        if global_config.chat.llm_quote and quote_message is not None:
+            # 如果配置为 true，使用 llm_quote 参数决定是否引用回复
+            need_reply = quote_message
+            if need_reply:
+                logger.info(f"{self.log_prefix} LLM 决定使用引用回复")
+        else:
+            # 如果配置为 false，使用原来的模式
+            new_message_count = message_api.count_new_messages(
+                chat_id=self.chat_stream.stream_id, start_time=self.last_read_time, end_time=time.time()
+            )
+            need_reply = new_message_count >= random.randint(2, 3)
+            if need_reply:
+                logger.info(f"{self.log_prefix} 从思考到回复，共有{new_message_count}条新消息，使用引用回复")
 
         reply_text = ""
         first_replied = False
@@ -640,6 +649,7 @@ class HeartFChatting:
 
                     # 从 Planner 的 action_data 中提取未知词语列表（仅在 reply 时使用）
                     unknown_words = None
+                    quote_message = None
                     if isinstance(action_planner_info.action_data, dict):
                         uw = action_planner_info.action_data.get("unknown_words")
                         if isinstance(uw, list):
@@ -651,6 +661,17 @@ class HeartFChatting:
                                         cleaned_uw.append(s)
                             if cleaned_uw:
                                 unknown_words = cleaned_uw
+                        
+                        # 从 Planner 的 action_data 中提取 quote_message 参数
+                        qm = action_planner_info.action_data.get("quote_message")
+                        if qm is not None:
+                            # 支持多种格式：true/false, "true"/"false", 1/0
+                            if isinstance(qm, bool):
+                                quote_message = qm
+                            elif isinstance(qm, str):
+                                quote_message = qm.lower() in ("true", "1", "yes")
+                            elif isinstance(qm, (int, float)):
+                                quote_message = bool(qm)
 
                     success, llm_response = await generator_api.generate_reply(
                         chat_stream=self.chat_stream,
@@ -682,6 +703,7 @@ class HeartFChatting:
                         thinking_id=thinking_id,
                         actions=chosen_action_plan_infos,
                         selected_expressions=selected_expressions,
+                        quote_message=quote_message,
                     )
                     self.last_active_time = time.time()
                     return {
