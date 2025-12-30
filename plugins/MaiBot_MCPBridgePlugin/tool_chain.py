@@ -14,12 +14,11 @@ MCP Workflow 模块 v1.9.0
 - 与 ReAct 软流程互补，用户可选择合适的执行方式
 """
 
-import asyncio
 import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from src.common.logger import get_logger

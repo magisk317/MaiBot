@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.1"
+version = "7.3.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了麦麦，不需要阅读----
 # 如果你想要修改配置文件，请递增version的值
@@ -115,6 +115,8 @@ mentioned_bot_reply = true # 是否启用提及必回复
 max_context_size = 30 # 上下文长度
 planner_smooth = 3 # 规划器平滑，增大数值会减小planner负荷，略微降低反应速度，推荐1-5，0为关闭，必须大于等于0
 think_mode = "dynamic" # 思考模式，可选：classic（默认浅度思考和回复）、deep（会进行比较长的，深度回复）、dynamic（动态选择两种模式）
+
+plan_reply_log_max_per_chat = 1024 # 每个聊天保存最大的Plan/Reply日志数量，超过此数量时会自动删除最老的日志
 
 enable_talk_value_rules = true # 是否启用动态发言频率规则
 

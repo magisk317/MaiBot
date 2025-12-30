@@ -1,7 +1,7 @@
 """表达方式管理 API 路由"""
 
 from fastapi import APIRouter, HTTPException, Header, Query, Cookie
-from pydantic import BaseModel, NonNegativeFloat
+from pydantic import BaseModel
 from typing import Optional, List, Dict
 from src.common.logger import get_logger
 from src.common.database.database_model import Expression, ChatStreams

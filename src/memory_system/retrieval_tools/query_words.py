@@ -3,7 +3,6 @@
 用于在记忆检索过程中主动查询未知词语或黑话的含义
 """
 
-from typing import List, Optional
 from src.common.logger import get_logger
 from src.bw_learner.jargon_explainer import retrieve_concepts_with_jargon
 from .tool_registry import register_memory_retrieval_tool

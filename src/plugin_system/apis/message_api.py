@@ -12,7 +12,6 @@ import time
 from typing import List, Dict, Any, Tuple, Optional
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.database_model import Images
-from src.config.config import global_config
 from src.chat.utils.utils import is_bot_self
 from src.chat.utils.chat_message_builder import (
     get_raw_msg_by_timestamp,

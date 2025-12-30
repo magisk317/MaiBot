@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from src.config.config import global_config
+
 
 class PlanReplyLogger:
     """独立的Plan/Reply日志记录器，负责落盘和容量控制。"""
@@ -11,8 +13,12 @@ class PlanReplyLogger:
     _BASE_DIR = Path("logs")
     _PLAN_DIR = _BASE_DIR / "plan"
     _REPLY_DIR = _BASE_DIR / "reply"
-    _MAX_PER_CHAT = 1000
     _TRIM_COUNT = 100
+
+    @classmethod
+    def _get_max_per_chat(cls) -> int:
+        """从配置中获取每个聊天流最大保存的日志数量"""
+        return getattr(global_config.chat, "plan_reply_log_max_per_chat", 1000)
 
     @classmethod
     def log_plan(
@@ -85,7 +91,8 @@ class PlanReplyLogger:
     def _trim_overflow(cls, chat_dir: Path) -> None:
         """超过阈值时删除最老的若干文件，避免目录无限增长。"""
         files = sorted(chat_dir.glob("*.json"), key=lambda p: p.stat().st_mtime)
-        if len(files) <= cls._MAX_PER_CHAT:
+        max_per_chat = cls._get_max_per_chat()
+        if len(files) <= max_per_chat:
             return
         # 删除最老的 TRIM_COUNT 条
         for old_file in files[: cls._TRIM_COUNT]:

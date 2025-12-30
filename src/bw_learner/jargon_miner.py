@@ -2,7 +2,7 @@ import json
 import asyncio
 import random
 from collections import OrderedDict
-from typing import List, Dict, Optional, Any, Callable
+from typing import List, Dict, Optional, Callable
 from json_repair import repair_json
 from peewee import fn
 
@@ -11,14 +11,8 @@ from src.common.database.database_model import Jargon
 from src.llm_models.utils_model import LLMRequest
 from src.config.config import model_config, global_config
 from src.chat.message_receive.chat_stream import get_chat_manager
-from src.chat.utils.chat_message_builder import (
-    build_readable_messages_with_id,
-)
 from src.chat.utils.prompt_builder import Prompt, global_prompt_manager
 from src.bw_learner.learner_utils import (
-    is_bot_message,
-    build_context_paragraph,
-    contains_bot_self_name,
     parse_chat_id_list,
     chat_id_list_contains,
     update_chat_id_list,

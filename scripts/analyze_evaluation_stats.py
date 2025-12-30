@@ -11,7 +11,7 @@ import json
 import os
 import sys
 import glob
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime
 from typing import Dict, List, Set, Tuple
 
@@ -147,7 +147,7 @@ def print_file_stats(stats: Dict, index: int = None):
     if stats["last_updated"]:
         print(f"最后更新: {stats['last_updated']}")
     
-    print(f"\n【记录统计】")
+    print("\n【记录统计】")
     print(f"  文件中的 total_count: {stats['total_count']}")
     print(f"  实际记录数: {stats['actual_count']}")
     
@@ -155,18 +155,18 @@ def print_file_stats(stats: Dict, index: int = None):
         diff = stats['total_count'] - stats['actual_count']
         print(f"  ⚠️  数量不一致，差值: {diff:+d}")
     
-    print(f"\n【评估结果统计】")
+    print("\n【评估结果统计】")
     print(f"  通过 (suitable=True): {stats['suitable_count']} 条 ({stats['suitable_rate']:.2f}%)")
     print(f"  不通过 (suitable=False): {stats['unsuitable_count']} 条 ({100 - stats['suitable_rate']:.2f}%)")
     
-    print(f"\n【唯一性统计】")
+    print("\n【唯一性统计】")
     print(f"  唯一 (situation, style) 对: {stats['unique_pairs']} 条")
     if stats['actual_count'] > 0:
         duplicate_count = stats['actual_count'] - stats['unique_pairs']
         duplicate_rate = (duplicate_count / stats['actual_count'] * 100) if stats['actual_count'] > 0 else 0
         print(f"  重复记录: {duplicate_count} 条 ({duplicate_rate:.2f}%)")
     
-    print(f"\n【评估者统计】")
+    print("\n【评估者统计】")
     if stats['evaluators']:
         for evaluator, count in stats['evaluators'].most_common():
             rate = (count / stats['actual_count'] * 100) if stats['actual_count'] > 0 else 0
@@ -174,7 +174,7 @@ def print_file_stats(stats: Dict, index: int = None):
     else:
         print("  无评估者信息")
     
-    print(f"\n【时间统计】")
+    print("\n【时间统计】")
     if stats['date_range']:
         print(f"  最早评估时间: {stats['date_range']['start']}")
         print(f"  最晚评估时间: {stats['date_range']['end']}")
@@ -182,7 +182,7 @@ def print_file_stats(stats: Dict, index: int = None):
     else:
         print("  无时间信息")
     
-    print(f"\n【字段统计】")
+    print("\n【字段统计】")
     print(f"  包含 expression_id: {'是' if stats['has_expression_id'] else '否'}")
     print(f"  包含 reason: {'是' if stats['has_reason'] else '否'}")
     if stats['has_reason']:
@@ -200,13 +200,13 @@ def print_summary(all_stats: List[Dict]):
     valid_files = [s for s in all_stats if not s.get("error")]
     error_files = [s for s in all_stats if s.get("error")]
     
-    print(f"\n【文件统计】")
+    print("\n【文件统计】")
     print(f"  总文件数: {total_files}")
     print(f"  成功解析: {len(valid_files)}")
     print(f"  解析失败: {len(error_files)}")
     
     if error_files:
-        print(f"\n  失败文件列表:")
+        print("\n  失败文件列表:")
         for stats in error_files:
             print(f"    - {stats['file_name']}: {stats['error']}")
     
@@ -232,7 +232,7 @@ def print_summary(all_stats: List[Dict]):
         except Exception:
             pass
     
-    print(f"\n【记录汇总】")
+    print("\n【记录汇总】")
     print(f"  总记录数: {total_records:,} 条")
     print(f"  通过: {total_suitable:,} 条 ({total_suitable / total_records * 100:.2f}%)" if total_records > 0 else "  通过: 0 条")
     print(f"  不通过: {total_unsuitable:,} 条 ({total_unsuitable / total_records * 100:.2f}%)" if total_records > 0 else "  不通过: 0 条")
@@ -248,7 +248,7 @@ def print_summary(all_stats: List[Dict]):
     for stats in valid_files:
         all_evaluators.update(stats['evaluators'])
     
-    print(f"\n【评估者汇总】")
+    print("\n【评估者汇总】")
     if all_evaluators:
         for evaluator, count in all_evaluators.most_common():
             rate = (count / total_records * 100) if total_records > 0 else 0
@@ -264,7 +264,7 @@ def print_summary(all_stats: List[Dict]):
     if all_dates:
         min_date = min(all_dates)
         max_date = max(all_dates)
-        print(f"\n【时间汇总】")
+        print("\n【时间汇总】")
         print(f"  最早评估时间: {min_date.isoformat()}")
         print(f"  最晚评估时间: {max_date.isoformat()}")
         print(f"  总时间跨度: {(max_date - min_date).days + 1} 天")
@@ -272,7 +272,7 @@ def print_summary(all_stats: List[Dict]):
     # 文件大小汇总
     total_size = sum(s['file_size'] for s in valid_files)
     avg_size = total_size / len(valid_files) if valid_files else 0
-    print(f"\n【文件大小汇总】")
+    print("\n【文件大小汇总】")
     print(f"  总大小: {total_size:,} 字节 ({total_size / 1024 / 1024:.2f} MB)")
     print(f"  平均大小: {avg_size:,.0f} 字节 ({avg_size / 1024:.2f} KB)")
 

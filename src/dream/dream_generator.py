@@ -189,7 +189,6 @@ async def generate_dream_summary(
         summary_model = get_dream_summary_model()
         dream_content, (reasoning, model_name, _) = await summary_model.generate_response_async(
             dream_prompt,
-            max_tokens=512,
             temperature=0.8,
         )
 

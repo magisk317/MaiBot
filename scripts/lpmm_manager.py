@@ -470,7 +470,7 @@ def _run_embedding_helper() -> None:
         test_path.rename(archive_path)
     except Exception as exc:  # pragma: no cover - 防御性兜底
         logger.error("归档 embedding_model_test.json 失败: %s", exc)
-        print(f"[ERROR] 归档 embedding_model_test.json 失败，请检查文件权限与路径。错误详情已写入日志。")
+        print("[ERROR] 归档 embedding_model_test.json 失败，请检查文件权限与路径。错误详情已写入日志。")
         return
 
     print(

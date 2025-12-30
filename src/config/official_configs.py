@@ -122,6 +122,9 @@ class ChatConfig(ConfigBase):
     - dynamic: think_level由planner动态给出（根据planner返回的think_level决定）
     """
 
+    plan_reply_log_max_per_chat: int = 1024
+    """每个聊天流最大保存的Plan/Reply日志数量，超过此数量时会自动删除最老的日志"""
+
     def _parse_stream_config_to_chat_id(self, stream_config_str: str) -> Optional[str]:
         """与 ChatStream.get_stream_id 一致地从 "platform:id:type" 生成 chat_id。"""
         try:
