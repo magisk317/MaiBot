@@ -1,8 +1,16 @@
 # Changelog
+## [0.12.1] - 2025-12-31
+### 🌟 主要更新
+- 添加年度总结！可以在webui查看
+- 可选让llm判定引用回复
+- 表达方式优化！现在可以进行自动和手动评估，使其更精准
+- 回复和规划记录！webui可以查看每一条回复和plan的详情
 
-移除 enable_jargon_detection
-添加 global_memory_blacklist
-
+### 细节功能更改
+- 优化间隔过长消息的显示
+- enable_jargon_detection
+- global_memory_blacklist。指定部分群聊不参与全局记忆
+- 移除utils_small模型，移除弃用的lpmm模型
 
 ## [0.12.0] - 2025-12-21
 ### 🌟 重大更新
