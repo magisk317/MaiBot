@@ -12,7 +12,7 @@ import time
 from typing import List, Dict, Any, Tuple, Optional
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.database_model import Images
-from src.config.config import global_config
+from src.chat.utils.utils import is_bot_self
 from src.chat.utils.chat_message_builder import (
     get_raw_msg_by_timestamp,
     get_raw_msg_by_timestamp_with_chat,
@@ -511,7 +511,8 @@ def filter_mai_messages(messages: List[DatabaseMessages]) -> List[DatabaseMessag
     Returns:
         过滤后的消息列表
     """
-    return [msg for msg in messages if msg.user_info.user_id != str(global_config.bot.qq_account)]
+    # 使用统一的 is_bot_self 函数判断是否是机器人自己（支持多平台，包括 WebUI）
+    return [msg for msg in messages if not is_bot_self(msg.user_info.platform, msg.user_info.user_id)]
 
 
 def translate_pid_to_description(pid: str) -> str:

@@ -3,7 +3,6 @@ WebUI 防爬虫模块
 提供爬虫检测和阻止功能，保护 WebUI 不被搜索引擎和恶意爬虫访问
 """
 
-import os
 import time
 import ipaddress
 import re

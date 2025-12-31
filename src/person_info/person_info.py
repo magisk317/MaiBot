@@ -19,7 +19,7 @@ from src.chat.message_receive.chat_stream import get_chat_manager
 logger = get_logger("person_info")
 
 relation_selection_model = LLMRequest(
-    model_set=model_config.model_task_config.utils_small, request_type="relation_selection"
+    model_set=model_config.model_task_config.tool_use, request_type="relation_selection"
 )
 
 
@@ -228,8 +228,59 @@ class Person:
 
         return person
 
+    def _is_bot_self(self, platform: str, user_id: str) -> bool:
+        """判断给定的平台和用户ID是否是机器人自己
+
+        这个函数统一处理所有平台（包括 QQ、Telegram、WebUI 等）的机器人识别逻辑。
+
+        Args:
+            platform: 消息平台（如 "qq", "telegram", "webui" 等）
+            user_id: 用户ID
+
+        Returns:
+            bool: 如果是机器人自己则返回 True，否则返回 False
+        """
+        if not platform or not user_id:
+            return False
+
+        # 将 user_id 转为字符串进行比较
+        user_id_str = str(user_id)
+
+        # 获取机器人的 QQ 账号（主账号）
+        qq_account = str(global_config.bot.qq_account or "")
+
+        # QQ 平台：直接比较 QQ 账号
+        if platform == "qq":
+            return user_id_str == qq_account
+
+        # WebUI 平台：机器人回复时使用的是 QQ 账号，所以也比较 QQ 账号
+        if platform == "webui":
+            return user_id_str == qq_account
+
+        # 获取各平台账号映射
+        platforms_list = getattr(global_config.bot, "platforms", []) or []
+        platform_accounts = {}
+        for platform_entry in platforms_list:
+            if ":" in platform_entry:
+                platform_name, account = platform_entry.split(":", 1)
+                platform_accounts[platform_name.strip()] = account.strip()
+
+        # Telegram 平台
+        if platform == "telegram":
+            tg_account = platform_accounts.get("tg", "") or platform_accounts.get("telegram", "")
+            return user_id_str == tg_account if tg_account else False
+
+        # 其他平台：尝试从 platforms 配置中查找
+        platform_account = platform_accounts.get(platform, "")
+        if platform_account:
+            return user_id_str == platform_account
+
+        # 默认情况：与主 QQ 账号比较（兼容性）
+        return user_id_str == qq_account
+
     def __init__(self, platform: str = "", user_id: str = "", person_id: str = "", person_name: str = ""):
-        if platform == global_config.bot.platform and user_id == global_config.bot.qq_account:
+        # 使用统一的机器人识别函数（支持多平台，包括 WebUI）
+        if self._is_bot_self(platform, user_id):
             self.is_known = True
             self.person_id = get_person_id(platform, user_id)
             self.user_id = user_id

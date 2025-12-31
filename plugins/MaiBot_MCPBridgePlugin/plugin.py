@@ -113,8 +113,6 @@ from .core.claude_config import (
 )
 from .tool_chain import (
     ToolChainDefinition,
-    ToolChainStep,
-    ChainExecutionResult,
     tool_chain_manager,
 )
 
@@ -1651,7 +1649,7 @@ class MCPStatusCommand(BaseCommand):
                     tool_name = f"chain_{name}".replace("-", "_").replace(".", "_")
                     if component_registry.get_component_info(tool_name, ComponentType.TOOL):
                         registered += 1
-                lines = [f"✅ 已重新加载工具链配置"]
+                lines = ["✅ 已重新加载工具链配置"]
                 lines.append(f"📋 配置数: {len(chains)} 个")
                 lines.append(f"🔧 已注册: {registered} 个（可被 LLM 调用）")
                 if chains:
@@ -1698,7 +1696,7 @@ class MCPStatusCommand(BaseCommand):
                     output_preview += "..."
                 lines.append(output_preview)
             else:
-                lines.append(f"❌ 工具链执行失败")
+                lines.append("❌ 工具链执行失败")
                 lines.append(f"错误: {result.error}")
                 if result.step_results:
                     lines.append("")
@@ -1777,9 +1775,9 @@ class MCPStatusCommand(BaseCommand):
                     cb = info.get("circuit_breaker", {})
                     cb_state = cb.get("state", "closed")
                     if cb_state == "open":
-                        lines.append(f"     ⚡ 断路器熔断中")
+                        lines.append("     ⚡ 断路器熔断中")
                     elif cb_state == "half_open":
-                        lines.append(f"     ⚡ 断路器试探中")
+                        lines.append("     ⚡ 断路器试探中")
                     if info["consecutive_failures"] > 0:
                         lines.append(f"     ⚠️ 连续失败 {info['consecutive_failures']} 次")
 

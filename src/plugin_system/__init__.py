@@ -56,7 +56,6 @@ from .apis import (
     person_api,
     plugin_manage_api,
     send_api,
-    auto_talk_api,
     register_plugin,
     get_logger,
 )

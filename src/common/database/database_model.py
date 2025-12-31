@@ -321,18 +321,14 @@ class Expression(BaseModel):
 
     situation = TextField()
     style = TextField()
-
-    # new mode fields
-    context = TextField(null=True)
-
     content_list = TextField(null=True)
-    style_list = TextField(null=True)  # 存储相似的 style，格式与 content_list 相同（JSON 数组）
     count = IntegerField(default=1)
     last_active_time = FloatField()
     chat_id = TextField(index=True)
     create_date = FloatField(null=True)  # 创建日期，允许为空以兼容老数据
     checked = BooleanField(default=False)  # 是否已检查
     rejected = BooleanField(default=False)  # 是否被拒绝但未更新
+    modified_by = TextField(null=True)  # 最后修改来源：'ai' 或 'user'，为空表示未检查
 
     class Meta:
         table_name = "expression"

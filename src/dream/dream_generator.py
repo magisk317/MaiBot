@@ -44,18 +44,6 @@ def get_random_dream_styles(count: int = 2) -> List[str]:
     """从梦境风格列表中随机选择指定数量的风格"""
     return random.sample(DREAM_STYLES, min(count, len(DREAM_STYLES)))
 
-
-def get_dream_summary_model() -> LLMRequest:
-    """获取用于生成梦境总结的 utils 模型实例"""
-    global _dream_summary_model
-    if _dream_summary_model is None:
-        _dream_summary_model = LLMRequest(
-            model_set=model_config.model_task_config.utils,
-            request_type="dream.summary",
-        )
-    return _dream_summary_model
-
-
 def init_dream_summary_prompt() -> None:
     """初始化梦境总结的提示词"""
     Prompt(
@@ -186,10 +174,12 @@ async def generate_dream_summary(
         )
 
         # 调用 utils 模型生成梦境
-        summary_model = get_dream_summary_model()
+        summary_model = LLMRequest(
+            model_set=model_config.model_task_config.replyer,
+            request_type="dream.summary",
+        )
         dream_content, (reasoning, model_name, _) = await summary_model.generate_response_async(
             dream_prompt,
-            max_tokens=512,
             temperature=0.8,
         )
 

@@ -67,6 +67,53 @@ def get_current_platform_account(platform: str, platform_accounts: dict[str, str
         return platform_accounts.get(platform, "")
 
 
+def is_bot_self(platform: str, user_id: str) -> bool:
+    """判断给定的平台和用户ID是否是机器人自己
+
+    这个函数统一处理所有平台（包括 QQ、Telegram、WebUI 等）的机器人识别逻辑。
+
+    Args:
+        platform: 消息平台（如 "qq", "telegram", "webui" 等）
+        user_id: 用户ID
+
+    Returns:
+        bool: 如果是机器人自己则返回 True，否则返回 False
+    """
+    if not platform or not user_id:
+        return False
+
+    # 将 user_id 转为字符串进行比较
+    user_id_str = str(user_id)
+
+    # 获取机器人的 QQ 账号（主账号）
+    qq_account = str(global_config.bot.qq_account or "")
+
+    # QQ 平台：直接比较 QQ 账号
+    if platform == "qq":
+        return user_id_str == qq_account
+
+    # WebUI 平台：机器人回复时使用的是 QQ 账号，所以也比较 QQ 账号
+    if platform == "webui":
+        return user_id_str == qq_account
+
+    # 获取各平台账号映射
+    platforms_list = getattr(global_config.bot, "platforms", []) or []
+    platform_accounts = parse_platform_accounts(platforms_list)
+
+    # Telegram 平台
+    if platform == "telegram":
+        tg_account = platform_accounts.get("tg", "") or platform_accounts.get("telegram", "")
+        return user_id_str == tg_account if tg_account else False
+
+    # 其他平台：尝试从 platforms 配置中查找
+    platform_account = platform_accounts.get(platform, "")
+    if platform_account:
+        return user_id_str == platform_account
+
+    # 默认情况：与主 QQ 账号比较（兼容性）
+    return user_id_str == qq_account
+
+
 def is_mentioned_bot_in_message(message: MessageRecv) -> tuple[bool, bool, float]:
     """检查消息是否提到了机器人（统一多平台实现）"""
     text = message.processed_plain_text or ""

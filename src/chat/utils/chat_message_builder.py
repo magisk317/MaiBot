@@ -13,7 +13,7 @@ from src.common.data_models.message_data_model import MessageAndActionModel
 from src.common.database.database_model import ActionRecords
 from src.common.database.database_model import Images
 from src.person_info.person_info import Person, get_person_id
-from src.chat.utils.utils import translate_timestamp_to_human_readable, assign_message_ids
+from src.chat.utils.utils import translate_timestamp_to_human_readable, assign_message_ids, is_bot_self
 
 install(extra_lines=3)
 logger = get_logger("chat_message_builder")
@@ -43,12 +43,9 @@ def replace_user_references(
     if name_resolver is None:
 
         def default_resolver(platform: str, user_id: str) -> str:
-            # 检查是否是机器人自己（支持多平台）
-            if replace_bot_name:
-                if platform == "qq" and user_id == global_config.bot.qq_account:
-                    return f"{global_config.bot.nickname}(你)"
-                if platform == "telegram" and user_id == getattr(global_config.bot, "telegram_account", ""):
-                    return f"{global_config.bot.nickname}(你)"
+            # 检查是否是机器人自己（支持多平台，包括 WebUI）
+            if replace_bot_name and is_bot_self(platform, user_id):
+                return f"{global_config.bot.nickname}(你)"
             person = Person(platform=platform, user_id=user_id)
             return person.person_name or user_id  # type: ignore
 
@@ -61,8 +58,8 @@ def replace_user_references(
         aaa = match[1]
         bbb = match[2]
         try:
-            # 检查是否是机器人自己
-            if replace_bot_name and bbb == global_config.bot.qq_account:
+            # 检查是否是机器人自己（支持多平台，包括 WebUI）
+            if replace_bot_name and is_bot_self(platform, bbb):
                 reply_person_name = f"{global_config.bot.nickname}(你)"
             else:
                 reply_person_name = name_resolver(platform, bbb) or aaa
@@ -370,6 +367,7 @@ def _build_readable_messages_internal(
     show_pic: bool = True,
     message_id_list: Optional[List[Tuple[str, DatabaseMessages]]] = None,
     pic_single: bool = False,
+    long_time_notice: bool = False,
 ) -> Tuple[str, List[Tuple[float, str, str]], Dict[str, str], int]:
     # sourcery skip: use-getitem-for-re-match-groups
     """
@@ -467,10 +465,8 @@ def _build_readable_messages_internal(
         person_name = (
             person.person_name or f"{user_nickname}" or (f"昵称：{user_cardname}" if user_cardname else "某人")
         )
-        if replace_bot_name and (
-            (platform == global_config.bot.platform and user_id == global_config.bot.qq_account)
-            or (platform == "telegram" and user_id == getattr(global_config.bot, "telegram_account", ""))
-        ):
+        # 使用统一的 is_bot_self 函数判断是否是机器人自己（支持多平台，包括 WebUI）
+        if replace_bot_name and is_bot_self(platform, user_id):
             person_name = f"{global_config.bot.nickname}(你)"
 
         # 使用独立函数处理用户引用格式
@@ -523,7 +519,30 @@ def _build_readable_messages_internal(
     # 3: 格式化为字符串
     output_lines: List[str] = []
 
+    prev_timestamp: Optional[float] = None
     for timestamp, name, content, is_action in detailed_message:
+        # 检查是否需要插入长时间间隔提示
+        if long_time_notice and prev_timestamp is not None:
+            time_diff = timestamp - prev_timestamp
+            time_diff_hours = time_diff / 3600
+            
+            # 检查是否跨天
+            prev_date = time.strftime("%Y-%m-%d", time.localtime(prev_timestamp))
+            current_date = time.strftime("%Y-%m-%d", time.localtime(timestamp))
+            is_cross_day = prev_date != current_date
+            
+            # 如果间隔大于8小时或跨天，插入提示
+            if time_diff_hours > 8 or is_cross_day:
+                # 格式化日期为中文格式：xxxx年xx月xx日（去掉前导零）
+                current_time_struct = time.localtime(timestamp)
+                year = current_time_struct.tm_year
+                month = current_time_struct.tm_mon
+                day = current_time_struct.tm_mday
+                date_str = f"{year}年{month}月{day}日"
+                hours_str = f"{int(time_diff_hours)}h"
+                notice = f"以下聊天开始时间：{date_str}。距离上一条消息过去了{hours_str}\n"
+                output_lines.append(notice)
+        
         readable_time = translate_timestamp_to_human_readable(timestamp, mode=timestamp_mode)
 
         # 查找消息id（如果有）并构建id_prefix
@@ -536,6 +555,8 @@ def _build_readable_messages_internal(
         else:
             output_lines.append(f"{id_prefix}{readable_time}, {name}: {content}")
         output_lines.append("\n")  # 在每个消息块后添加换行，保持可读性
+        
+        prev_timestamp = timestamp
 
     formatted_string = "".join(output_lines).strip()
 
@@ -651,6 +672,7 @@ async def build_readable_messages_with_list(
         show_pic=True,
         message_id_list=None,
         pic_single=pic_single,
+        long_time_notice=False,
     )
 
     if not pic_single:
@@ -704,6 +726,7 @@ def build_readable_messages(
     message_id_list: Optional[List[Tuple[str, DatabaseMessages]]] = None,
     remove_emoji_stickers: bool = False,
     pic_single: bool = False,
+    long_time_notice: bool = False,
 ) -> str:  # sourcery skip: extract-method
     """
     将消息列表转换为可读的文本格式。
@@ -719,6 +742,7 @@ def build_readable_messages(
         truncate: 是否截断长消息
         show_actions: 是否显示动作记录
         remove_emoji_stickers: 是否移除表情包并过滤空消息
+        long_time_notice: 是否在消息间隔过长（>8小时）或跨天时插入时间提示
     """
     # WIP HERE and BELOW ----------------------------------------------
     # 创建messages的深拷贝，避免修改原始列表
@@ -812,6 +836,7 @@ def build_readable_messages(
             show_pic=show_pic,
             message_id_list=message_id_list,
             pic_single=pic_single,
+            long_time_notice=long_time_notice,
         )
 
         if not pic_single:
@@ -839,6 +864,7 @@ def build_readable_messages(
             show_pic=show_pic,
             message_id_list=message_id_list,
             pic_single=pic_single,
+            long_time_notice=long_time_notice,
         )
         formatted_after, _, pic_id_mapping, _ = _build_readable_messages_internal(
             messages_after_mark,
@@ -850,6 +876,7 @@ def build_readable_messages(
             show_pic=show_pic,
             message_id_list=message_id_list,
             pic_single=pic_single,
+            long_time_notice=long_time_notice,
         )
 
         read_mark_line = "\n--- 以上消息是你已经看过，请关注以下未读的新消息---\n"
