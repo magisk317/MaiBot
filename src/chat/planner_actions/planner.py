@@ -531,7 +531,7 @@ class ActionPlanner:
                     '"question":"需要查询的问题"'
                 )
                 if global_config.chat.llm_quote:
-                    reply_action_example += ', "quote_message":"如果需要引用该message，设置为true"'
+                    reply_action_example += ', "quote":"如果需要引用该message，设置为true"'
                 reply_action_example += "}"
             else:
                 reply_action_example = (
@@ -546,7 +546,7 @@ class ActionPlanner:
                     '"question":"需要查询的问题"'
                 )
                 if global_config.chat.llm_quote:
-                    reply_action_example += ', "quote_message":"如果需要引用该message，设置为true"'
+                    reply_action_example += ', "quote":"如果需要引用该message，设置为true"'
                 reply_action_example += "}"
 
             planner_prompt_template = await global_prompt_manager.get_prompt_async("planner_prompt")

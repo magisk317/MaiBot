@@ -82,21 +82,51 @@ def _is_chat_id_in_blacklist(chat_id: str) -> bool:
     return chat_id in blacklist_chat_ids
 
 
-async def search_chat_history(chat_id: str, keyword: Optional[str] = None, participant: Optional[str] = None) -> str:
+async def search_chat_history(
+    chat_id: str,
+    keyword: Optional[str] = None,
+    participant: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+) -> str:
     """根据关键词或参与人查询记忆，返回匹配的记忆id、记忆标题theme和关键词keywords
 
     Args:
         chat_id: 聊天ID
         keyword: 关键词（可选，支持多个关键词，可用空格、逗号等分隔。匹配规则：如果关键词数量<=2，必须全部匹配；如果关键词数量>2，允许n-1个关键词匹配）
         participant: 参与人昵称（可选）
+        start_time: 开始时间（可选，格式如：'2025-01-01' 或 '2025-01-01 12:00:00' 或 '2025/01/01'）。如果只提供start_time，查询该时间点之后的记录
+        end_time: 结束时间（可选，格式如：'2025-01-01' 或 '2025-01-01 12:00:00' 或 '2025/01/01'）。如果只提供end_time，查询该时间点之前的记录。如果同时提供start_time和end_time，查询该时间段内的记录
 
     Returns:
         str: 查询结果，包含记忆id、theme和keywords
     """
     try:
         # 检查参数
-        if not keyword and not participant:
-            return "未指定查询参数（需要提供keyword或participant之一）"
+        if not keyword and not participant and not start_time and not end_time:
+            return "未指定查询参数（需要提供keyword、participant、start_time或end_time之一）"
+        
+        # 解析时间参数
+        start_timestamp = None
+        end_timestamp = None
+        
+        if start_time:
+            try:
+                from src.memory_system.memory_utils import parse_datetime_to_timestamp
+                start_timestamp = parse_datetime_to_timestamp(start_time)
+            except ValueError as e:
+                return f"开始时间格式错误: {str(e)}，支持格式如：'2025-01-01' 或 '2025-01-01 12:00:00' 或 '2025/01/01'"
+        
+        if end_time:
+            try:
+                from src.memory_system.memory_utils import parse_datetime_to_timestamp
+                end_timestamp = parse_datetime_to_timestamp(end_time)
+            except ValueError as e:
+                return f"结束时间格式错误: {str(e)}，支持格式如：'2025-01-01' 或 '2025-01-01 12:00:00' 或 '2025/01/01'"
+        
+        # 验证时间范围
+        if start_timestamp and end_timestamp and start_timestamp > end_timestamp:
+            return "开始时间不能晚于结束时间"
 
         # 构建查询条件
         # 检查当前chat_id是否在黑名单中
@@ -128,6 +158,40 @@ async def search_chat_history(chat_id: str, keyword: Optional[str] = None, parti
                     f"search_chat_history 当前聊天流在黑名单中，强制使用本地查询，chat_id={chat_id}, keyword={keyword}, participant={participant}"
                 )
             query = ChatHistory.select().where(ChatHistory.chat_id == chat_id)
+        
+        # 添加时间过滤条件
+        if start_timestamp is not None and end_timestamp is not None:
+            # 查询指定时间段内的记录（记录的时间范围与查询时间段有交集）
+            # 记录的开始时间在查询时间段内，或记录的结束时间在查询时间段内，或记录完全包含查询时间段
+            query = query.where(
+                (
+                    (ChatHistory.start_time >= start_timestamp)
+                    & (ChatHistory.start_time <= end_timestamp)
+                )  # 记录开始时间在查询时间段内
+                | (
+                    (ChatHistory.end_time >= start_timestamp)
+                    & (ChatHistory.end_time <= end_timestamp)
+                )  # 记录结束时间在查询时间段内
+                | (
+                    (ChatHistory.start_time <= start_timestamp)
+                    & (ChatHistory.end_time >= end_timestamp)
+                )  # 记录完全包含查询时间段
+            )
+            logger.debug(
+                f"search_chat_history 添加时间范围过滤: {start_timestamp} - {end_timestamp}, keyword={keyword}, participant={participant}"
+            )
+        elif start_timestamp is not None:
+            # 只提供开始时间，查询该时间点之后的记录（记录的开始时间或结束时间在该时间点之后）
+            query = query.where(ChatHistory.end_time >= start_timestamp)
+            logger.debug(
+                f"search_chat_history 添加开始时间过滤: >= {start_timestamp}, keyword={keyword}, participant={participant}"
+            )
+        elif end_timestamp is not None:
+            # 只提供结束时间，查询该时间点之前的记录（记录的开始时间或结束时间在该时间点之前）
+            query = query.where(ChatHistory.start_time <= end_timestamp)
+            logger.debug(
+                f"search_chat_history 添加结束时间过滤: <= {end_timestamp}, keyword={keyword}, participant={participant}"
+            )
 
         # 执行查询
         records = list(query.order_by(ChatHistory.start_time.desc()).limit(50))
@@ -217,21 +281,31 @@ async def search_chat_history(chat_id: str, keyword: Optional[str] = None, parti
                 filtered_records.append(record)
 
         if not filtered_records:
-            if keyword and participant:
-                keywords_str = "、".join(parse_keywords_string(keyword) if keyword else [])
-                return f"未找到包含关键词'{keywords_str}'且参与人包含'{participant}'的聊天记录"
-            elif keyword:
+            # 构建查询条件描述
+            conditions = []
+            if keyword:
                 keywords_str = "、".join(parse_keywords_string(keyword))
-                keywords_list = parse_keywords_string(keyword)
-                if len(keywords_list) > 2:
-                    required_count = len(keywords_list) - 1
-                    return (
-                        f"未找到包含至少{required_count}个关键词（共{len(keywords_list)}个）'{keywords_str}'的聊天记录"
-                    )
-                else:
-                    return f"未找到包含所有关键词'{keywords_str}'的聊天记录"
-            elif participant:
-                return f"未找到参与人包含'{participant}'的聊天记录"
+                conditions.append(f"关键词'{keywords_str}'")
+            if participant:
+                conditions.append(f"参与人'{participant}'")
+            if start_timestamp or end_timestamp:
+                time_desc = ""
+                if start_timestamp and end_timestamp:
+                    start_str = datetime.fromtimestamp(start_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                    end_str = datetime.fromtimestamp(end_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                    time_desc = f"时间范围'{start_str}' 至 '{end_str}'"
+                elif start_timestamp:
+                    start_str = datetime.fromtimestamp(start_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                    time_desc = f"时间>='{start_str}'"
+                elif end_timestamp:
+                    end_str = datetime.fromtimestamp(end_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                    time_desc = f"时间<='{end_str}'"
+                if time_desc:
+                    conditions.append(time_desc)
+            
+            if conditions:
+                conditions_str = "且".join(conditions)
+                return f"未找到满足条件（{conditions_str}）的聊天记录"
             else:
                 return "未找到相关聊天记录"
 
@@ -419,7 +493,7 @@ def register_tool():
     # 注册工具1：搜索记忆
     register_memory_retrieval_tool(
         name="search_chat_history",
-        description="根据关键词或参与人查询记忆，返回匹配的记忆id、记忆标题theme和关键词keywords。用于快速搜索和定位相关记忆。匹配规则：如果关键词数量<=2，必须全部匹配；如果关键词数量>2，允许n-1个关键词匹配（容错匹配）。",
+        description="根据关键词或参与人查询记忆，返回匹配的记忆id、记忆标题theme和关键词keywords。用于快速搜索和定位相关记忆。匹配规则：如果关键词数量<=2，必须全部匹配；如果关键词数量>2，允许n-1个关键词匹配（容错匹配）。支持按时间点或时间段进行查询。",
         parameters=[
             {
                 "name": "keyword",
@@ -431,6 +505,18 @@ def register_tool():
                 "name": "participant",
                 "type": "string",
                 "description": "参与人昵称（可选），用于查询包含该参与人的记忆",
+                "required": False,
+            },
+            {
+                "name": "start_time",
+                "type": "string",
+                "description": "开始时间（可选），格式如：'2025-01-01' 或 '2025-01-01 12:00:00' 或 '2025/01/01'。如果只提供start_time，查询该时间点之后的记录。如果同时提供start_time和end_time，查询该时间段内的记录",
+                "required": False,
+            },
+            {
+                "name": "end_time",
+                "type": "string",
+                "description": "结束时间（可选），格式如：'2025-01-01' 或 '2025-01-01 12:00:00' 或 '2025/01/01'。如果只提供end_time，查询该时间点之前的记录。如果同时提供start_time和end_time，查询该时间段内的记录",
                 "required": False,
             },
         ],
