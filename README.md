@@ -4,11 +4,11 @@
   <!-- Badges Row -->
   <p>
     <img src="https://img.shields.io/badge/Python-3.10+-blue" alt="Python Version">
-    <img src="https://img.shields.io/github/license/SengokuCola/MaiMBot?label=协议" alt="License">
+    <img src="https://img.shields.io/github/license/Mai-with-u/MaiBot?label=%E5%8D%8F%E8%AE%AE" alt="License">
     <img src="https://img.shields.io/badge/状态-开发中-yellow" alt="Status">
-    <img src="https://img.shields.io/github/contributors/MaiM-with-u/MaiBot.svg?style=flat&label=贡献者" alt="Contributors">
-    <img src="https://img.shields.io/github/forks/MaiM-with-u/MaiBot.svg?style=flat&label=分支数" alt="Forks">
-    <img src="https://img.shields.io/github/stars/MaiM-with-u/MaiBot?style=flat&label=星标数" alt="Stars">
+    <img src="https://img.shields.io/github/contributors/Mai-with-u/MaiBot.svg?style=flat&label=贡献者" alt="Contributors">
+    <img src="https://img.shields.io/github/forks/Mai-with-u/MaiBot.svg?style=flat&label=分支数" alt="Forks">
+    <img src="https://img.shields.io/github/stars/Mai-with-u/MaiBot?style=flat&label=星标数" alt="Stars">
     <a href="https://deepwiki.com/DrSmoothl/MaiBot"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
   </p>
 </div>
