@@ -6,9 +6,9 @@
     <img src="https://img.shields.io/badge/Python-3.10+-blue" alt="Python Version">
     <img src="https://img.shields.io/github/license/Mai-with-u/MaiBot?label=%E5%8D%8F%E8%AE%AE" alt="License">
     <img src="https://img.shields.io/badge/状态-开发中-yellow" alt="Status">
-    <img src="https://img.shields.io/github/contributors/Mai-with-u/MaiBot.svg?style=flat&label=贡献者" alt="Contributors">
-    <img src="https://img.shields.io/github/forks/Mai-with-u/MaiBot.svg?style=flat&label=分支数" alt="Forks">
-    <img src="https://img.shields.io/github/stars/Mai-with-u/MaiBot?style=flat&label=星标数" alt="Stars">
+    <img src="https://img.shields.io/github/contributors/Mai-with-u/MaiBot.svg?style=flat&label=%E8%B4%A1%E7%8C%AE%E8%80%85" alt="Contributors">
+    <img src="https://img.shields.io/github/forks/Mai-with-u/MaiBot.svg?style=flat&label=%E5%88%86%E6%94%AF%E6%95%B0" alt="Forks">
+    <img src="https://img.shields.io/github/stars/Mai-with-u/MaiBot?style=flat&label=%E6%98%9F%E6%A0%87%E6%95%B0" alt="Stars">
     <a href="https://deepwiki.com/DrSmoothl/MaiBot"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
   </p>
 </div>
@@ -34,8 +34,8 @@ MaiBot 不仅仅是一个机器人，她致力于成为一个活跃在 QQ 群聊
 <p>
   <a href="https://www.bilibili.com/video/BV1amAneGE3P">🌟 演示视频</a> &nbsp;|&nbsp; 
   <a href="#-更新和安装">📦 快速入门</a> &nbsp;|&nbsp; 
-  <a href="#-文档">📃 核心文档</a> &nbsp;|&nbsp; 
-  <a href="#-讨论">💬 加入社区</a>
+  <a href="#-部署教程">📃 核心文档</a> &nbsp;|&nbsp; 
+  <a href="#-讨论与社区">💬 加入社区</a>
 </p>
 
 <!-- Clear float to ensure subsequent content starts below the image area if text is short -->
